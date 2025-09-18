@@ -3,9 +3,6 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
-// Import directo del logo
-import Logo from "../assets/images/logo.png";
-
 export default function Login() {
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -13,7 +10,7 @@ export default function Login() {
 
   const handleLogin = () => {
     if (username === "admin" && password === "1234") {
-      router.push("/home"); 
+      router.push("/"); 
     } else {
       Alert.alert("Error", "Usuario o contraseña incorrectos");
     }
@@ -22,7 +19,11 @@ export default function Login() {
   return (
     <View style={styles.container}>
       {/* Logo arriba */}
-      <Image source={Logo} style={styles.logo} resizeMode="contain" />
+      <Image 
+        source={require("../assets/images/logo.png")} 
+        style={styles.logo} 
+        resizeMode="contain" 
+      />
 
       {/* Caja rectangular para el login */}
       <View style={styles.loginBox}>
@@ -73,7 +74,7 @@ const styles = StyleSheet.create({
   },
   loginBox: {
     width: "100%",
-    backgroundColor: "#1e1e1e",   // color del rectángulo
+    backgroundColor: "#1e1e1e",
     padding: 20,
     borderRadius: 15,
     borderWidth: 1,
@@ -81,7 +82,7 @@ const styles = StyleSheet.create({
     shadowColor: "#000",
     shadowOpacity: 0.3,
     shadowRadius: 6,
-    elevation: 5, // para Android
+    elevation: 5,
   },
   input: { 
     width: "100%", 
