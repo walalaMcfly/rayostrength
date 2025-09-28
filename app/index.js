@@ -10,7 +10,7 @@ export default function Login() {
 
   const handleLogin = () => {
     if (username === "admin" && password === "1234") {
-      router.push("/"); 
+      router.push("/home"); 
     } else {
       Alert.alert("Error", "Usuario o contraseña incorrectos");
     }
