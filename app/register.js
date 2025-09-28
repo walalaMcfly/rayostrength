@@ -1,19 +1,22 @@
-// app/login.js
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
-export default function Login() {
+export default function Register() {
   const router = useRouter();
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleLogin = () => {
-    if (username === "admin" && password === "1234") {
-      router.push("/"); 
-    } else {
-      Alert.alert("Error", "Usuario o contraseña incorrectos");
+  const handleRegister = () => {
+    if (!username || !email || !password) {
+      Alert.alert("Error", "Por favor completa todos los campos");
+      return;
     }
+
+    // // 🚧 Aquí luego puedes conectar con backend o Firebase
+    // Alert.alert("Éxito", "Usuario registrado con éxito 🚀");
+    // router.push("/login"); // vuelve al login después del registro
   };
 
   return (
@@ -25,15 +28,25 @@ export default function Login() {
         resizeMode="contain" 
       />
 
-      {/* Caja rectangular para el login */}
-      <View style={styles.loginBox}>
+      {/* Caja rectangular para el registro */}
+      <View style={styles.registerBox}>
         <TextInput
           style={styles.input}
-          placeholder="Usuario"
+          placeholder="Nombre de usuario"
           placeholderTextColor="#9ca3af"
           value={username}
           onChangeText={setUsername}
         />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Correo electrónico"
+          placeholderTextColor="#9ca3af"
+          keyboardType="email-address"
+          value={email}
+          onChangeText={setEmail}
+        />
+
         <TextInput
           style={styles.input}
           placeholder="Contraseña"
@@ -43,16 +56,16 @@ export default function Login() {
           onChangeText={setPassword}
         />
 
-        <TouchableOpacity style={styles.button} onPress={handleLogin}>
-          <Text style={styles.buttonText}>Iniciar Sesión</Text>
+        <TouchableOpacity style={styles.button} onPress={handleRegister}>
+          <Text style={styles.buttonText}>Registrarse</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Footer con registro */}
+      {/* Footer con volver al login */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>¿No tienes tu cuenta creada?</Text>
-        <TouchableOpacity onPress={() => router.push("/register")}>
-          <Text style={styles.registerText}> Regístrate aquí</Text>
+        <Text style={styles.footerText}>¿Ya tienes cuenta?</Text>
+        <TouchableOpacity onPress={() => router.push("/")}>
+          <Text style={styles.loginText}> Inicia sesión aquí</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -72,7 +85,7 @@ const styles = StyleSheet.create({
     height: 100,
     marginBottom: 40,
   },
-  loginBox: {
+  registerBox: {
     width: "100%",
     backgroundColor: "#1e1e1e",
     padding: 20,
@@ -114,7 +127,7 @@ const styles = StyleSheet.create({
   footerText: { 
     color: "#9ca3af" 
   },
-  registerText: { 
+  loginText: { 
     color: "#c0b398ff", 
     fontWeight: "bold" 
   }
