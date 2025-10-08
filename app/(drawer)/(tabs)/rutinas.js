@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useState } from "react";
-import { colors } from "../../constants/theme";
-
 import {
   FlatList,
   Linking,
@@ -11,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { colors } from "../../../constants/theme";
 
 // 🔹 Mock de datos
 const RUTINAS_DATA = [
@@ -41,6 +41,7 @@ const RUTINAS_DATA = [
 ];
 
 export default function RutinasScreen() {
+  const router = useRouter();
   const [notasCliente, setNotasCliente] = useState({});
   const [setsCompletados, setSetsCompletados] = useState({});
 
@@ -115,12 +116,6 @@ export default function RutinasScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Ionicons name="chevron-back" size={24} color={colors.icon} />
-        <Text style={styles.headerTitle}>Semana 1</Text>
-        <Ionicons name="chevron-forward" size={24} color={colors.icon} />
-      </View>
-
       <FlatList
         data={RUTINAS_DATA}
         keyExtractor={(item) => item.id}
@@ -136,17 +131,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: colors.text,
   },
   card: {
     backgroundColor: colors.card,
