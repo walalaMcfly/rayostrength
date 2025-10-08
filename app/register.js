@@ -1,41 +1,86 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Text, TextInput, TouchableOpacity, View } from "react-native";
+
+const API_URL = 'http://localhost:3000/api';
 
 export default function Register() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [nombre, setNombre] = useState("");
+  const [edad, setEdad] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     if (!username || !email || !password) {
-      Alert.alert("Error", "Por favor completa todos los campos");
+      Alert.alert("Error", "Username, email y contraseña son requeridos");
       return;
     }
 
-    // // 🚧 Aquí luego puedes conectar con backend o Firebase
-    // Alert.alert("Éxito", "Usuario registrado con éxito 🚀");
-    // router.push("/login"); // vuelve al login después del registro
+    if (password.length < 6) {
+      Alert.alert("Error", "La contraseña debe tener al menos 6 caracteres");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username,
+          email,
+          password,
+          nombre: nombre || null,
+          edad: edad ? parseInt(edad) : null
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        Alert.alert("Éxito", "Usuario registrado correctamente");
+        router.push("/"); // Volver al login
+      } else {
+        Alert.alert("Error", data.message);
+      }
+    } catch (error) {
+      console.error('Error registro:', error);
+      Alert.alert("Error", "No se pudo conectar al servidor");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <View style={styles.container}>
-      {/* Logo arriba */}
       <Image 
         source={require("../assets/images/logo.png")} 
         style={styles.logo} 
         resizeMode="contain" 
       />
 
-      {/* Caja rectangular para el registro */}
       <View style={styles.registerBox}>
+        <TextInput
+          style={styles.input}
+          placeholder="Nombre completo"
+          placeholderTextColor="#9ca3af"
+          value={nombre}
+          onChangeText={setNombre}
+        />
+
         <TextInput
           style={styles.input}
           placeholder="Nombre de usuario"
           placeholderTextColor="#9ca3af"
           value={username}
           onChangeText={setUsername}
+          autoCapitalize="none"
         />
 
         <TextInput
@@ -45,6 +90,16 @@ export default function Register() {
           keyboardType="email-address"
           value={email}
           onChangeText={setEmail}
+          autoCapitalize="none"
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Edad"
+          placeholderTextColor="#9ca3af"
+          keyboardType="numeric"
+          value={edad}
+          onChangeText={setEdad}
         />
 
         <TextInput
@@ -56,12 +111,19 @@ export default function Register() {
           onChangeText={setPassword}
         />
 
-        <TouchableOpacity style={styles.button} onPress={handleRegister}>
-          <Text style={styles.buttonText}>Registrarse</Text>
+        <TouchableOpacity 
+          style={[styles.button, loading && styles.buttonDisabled]} 
+          onPress={handleRegister}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Registrarse</Text>
+          )}
         </TouchableOpacity>
       </View>
 
-      {/* Footer con volver al login */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>¿Ya tienes cuenta?</Text>
         <TouchableOpacity onPress={() => router.push("/")}>
@@ -72,63 +134,4 @@ export default function Register() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    justifyContent: "center", 
-    alignItems: "center", 
-    padding: 20, 
-    backgroundColor: "#111111ff" 
-  },
-  logo: {
-    width: 250,
-    height: 100,
-    marginBottom: 40,
-  },
-  registerBox: {
-    width: "100%",
-    backgroundColor: "#1e1e1e",
-    padding: 20,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: "#333",
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 5,
-  },
-  input: { 
-    width: "100%", 
-    backgroundColor: "#424040ff", 
-    padding: 12, 
-    borderRadius: 10, 
-    marginBottom: 15, 
-    borderWidth: 1, 
-    borderColor: "#333", 
-    color: "#fff" 
-  },
-  button: { 
-    backgroundColor: "#6e7275ff", 
-    padding: 15, 
-    borderRadius: 10, 
-    width: "100%", 
-    alignItems: "center", 
-    marginTop: 10 
-  },
-  buttonText: { 
-    color: "#fff", 
-    fontSize: 16, 
-    fontWeight: "bold" 
-  },
-  footer: { 
-    flexDirection: "row", 
-    marginTop: 30 
-  },
-  footerText: { 
-    color: "#9ca3af" 
-  },
-  loginText: { 
-    color: "#c0b398ff", 
-    fontWeight: "bold" 
-  }
-});
+// ... (tus estilos actuales)

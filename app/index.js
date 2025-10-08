@@ -7,13 +7,35 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleLogin = () => {
-    if (username === "admin" && password === "1234") {
+ const handleLogin = async () => {
+  if (username === "admin" && password === "1234") {
+    // PRIMERO probemos con el backend
+    try {
+      const response = await fetch('http://localhost:3000/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        Alert.alert("Éxito", "Login con backend funcionando!");
+        router.push("/(drawer)/(tabs)/rutinas");
+      } else {
+        Alert.alert("Error", data.message);
+      }
+    } catch (error) {
+      // Si falla la conexión, usa el método antiguo
+      console.log('Backend caído, usando login local');
       router.push("/(drawer)/(tabs)/rutinas");
-    } else {
-      Alert.alert("Error", "Usuario o contraseña incorrectos");
     }
-  };
+  } else {
+    Alert.alert("Error", "Usuario o contraseña incorrectos");
+  }
+};
 
   return (
     <View style={styles.container}>
