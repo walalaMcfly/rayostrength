@@ -1,4 +1,3 @@
-// app/login.js
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -10,7 +9,7 @@ export default function Login() {
 
   const handleLogin = () => {
     if (username === "admin" && password === "1234") {
-      router.push("/home"); 
+      router.push("/(drawer)/(tabs)/rutinas");
     } else {
       Alert.alert("Error", "Usuario o contraseña incorrectos");
     }

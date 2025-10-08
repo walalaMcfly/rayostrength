@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Dimensions,
@@ -9,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { BarChart, PieChart } from "react-native-chart-kit";
-import { colors } from "../../constants/theme"; // ✅ AÑADIDO
+import { colors } from "../../../constants/theme";
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -25,6 +26,7 @@ const wellnessQuestions = [
 ];
 
 export default function Progreso() {
+  const router = useRouter();
   const [answers, setAnswers] = useState({});
   const [feedback, setFeedback] = useState("");
 
@@ -84,7 +86,7 @@ export default function Progreso() {
                   key={val}
                   style={[
                     styles.answerButton,
-                    answers[i] === val && { backgroundColor: colors.active }, // ✅ MODIFICADO
+                    answers[i] === val && { backgroundColor: colors.active },
                   ]}
                   onPress={() => handleAnswer(i, val)}
                 >
@@ -100,7 +102,7 @@ export default function Progreso() {
         <TextInput
           style={styles.feedbackBox}
           placeholder="Escribe tus comentarios..."
-          placeholderTextColor={colors.placeholder} // ✅ MODIFICADO
+          placeholderTextColor={colors.placeholder}
           multiline
           value={feedback}
           onChangeText={setFeedback}
@@ -111,18 +113,18 @@ export default function Progreso() {
 }
 
 const chartConfig = {
-  backgroundGradientFrom: colors.card, // 
-  backgroundGradientTo: colors.card,   // 
+  backgroundGradientFrom: colors.card,
+  backgroundGradientTo: colors.card,
   decimalPlaces: 0,
-  color: (opacity = 1) => `rgba(255, 215, 0, ${opacity})`, // dorado
-  labelColor: (opacity = 1) => colors.text, 
+  color: (opacity = 1) => `rgba(255, 215, 0, ${opacity})`,
+  labelColor: (opacity = 1) => colors.text,
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: colors.background }, 
-  title: { fontSize: 24, fontWeight: "bold", marginBottom: 20, color: colors.text }, 
+  container: { flex: 1, padding: 16, backgroundColor: colors.background },
+  title: { fontSize: 24, fontWeight: "bold", marginBottom: 20, color: colors.text },
   card: {
-    backgroundColor: colors.card, 
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
@@ -130,21 +132,21 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 20, fontWeight: "700", marginBottom: 10, color: colors.accent },
   subtitle: { fontSize: 16, fontWeight: "600", marginVertical: 12, color: colors.text },
   questionBlock: { marginBottom: 16 },
-  question: { fontSize: 16, fontWeight: "600", marginBottom: 8, color: colors.text }, 
+  question: { fontSize: 16, fontWeight: "600", marginBottom: 8, color: colors.text },
   answerRow: { flexDirection: "row", justifyContent: "space-between" },
   answerButton: {
     borderWidth: 1,
-    borderColor: colors.border, 
+    borderColor: colors.border,
     borderRadius: 6,
     padding: 8,
     width: 40,
     alignItems: "center",
   },
-  answerText: { color: colors.text }, 
-  answerTextActive: { color: colors.text, fontWeight: "bold" }, 
+  answerText: { color: colors.text },
+  answerTextActive: { color: colors.text, fontWeight: "bold" },
   feedbackBox: {
     borderWidth: 1,
-    borderColor: colors.border, 
+    borderColor: colors.border,
     borderRadius: 10,
     padding: 10,
     height: 100,
