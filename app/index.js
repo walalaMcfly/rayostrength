@@ -2,8 +2,8 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
-// Usa tu IP local - la misma que usaste en register.js
-const API_URL = 'http://192.168.1.2:3000/api'; // ← CAMBIA por tu IP real
+
+const API_URL = 'https://rayostrength-production.up.railway.app/api'; 
 
 export default function Login() {
   const router = useRouter();
@@ -36,7 +36,6 @@ export default function Login() {
       if (data.success) {
         Alert.alert("Éxito", "¡Login exitoso!");
         console.log("Usuario logueado:", data.user);
-        // Redirige a la pantalla principal
         router.push("/(drawer)/(tabs)/rutinas");
       } else {
         Alert.alert("Error", data.message || "Credenciales incorrectas");
