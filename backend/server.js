@@ -9,11 +9,11 @@ const { pool, createTables, testConnection } = require('./config/database');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-
+// Health check
 app.get('/api/health', async (req, res) => {
   const dbStatus = await testConnection();
   res.json({ 
@@ -23,44 +23,45 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-
+// REGISTRO DE USUARIO (actualizado para tabla Usuario)
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, email, password, nombre, edad } = req.body;
+    const { nombre, apellido, email, contraseña, fecha_nacimiento, sexo, peso_actual, altura } = req.body;
 
-    
-    if (!username || !email || !password) {
+    // Validaciones
+    if (!nombre || !apellido || !email || !contraseña || !fecha_nacimiento || !sexo) {
       return res.status(400).json({
         success: false,
-        message: 'Username, email y password son requeridos'
+        message: 'Nombre, apellido, email, contraseña, fecha_nacimiento y sexo son requeridos'
       });
     }
 
-    
+    // Verificar si el email ya existe
     const [existingUsers] = await pool.execute(
-      'SELECT id FROM users WHERE username = ? OR email = ?',
-      [username, email]
+      'SELECT id_usuario FROM Usuario WHERE email = ?',
+      [email]
     );
 
     if (existingUsers.length > 0) {
       return res.status(400).json({
         success: false,
-        message: 'El usuario o email ya están registrados'
+        message: 'El email ya está registrado'
       });
     }
 
-  
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Hash de la contraseña
+    const hashedPassword = await bcrypt.hash(contraseña, 10);
 
- 
+    // Insertar en la tabla Usuario
     const [result] = await pool.execute(
-      'INSERT INTO users (username, email, password, nombre, edad) VALUES (?, ?, ?, ?, ?)',
-      [username, email, hashedPassword, nombre, edad || null]
+      `INSERT INTO Usuario (nombre, apellido, email, contraseña, fecha_nacimiento, sexo, peso_actual, altura) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [nombre, apellido, email, hashedPassword, fecha_nacimiento, sexo, peso_actual || null, altura || null]
     );
 
-   
+    // Generar token
     const token = jwt.sign(
-      { userId: result.insertId, username },
+      { userId: result.insertId, email },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -70,11 +71,14 @@ app.post('/api/auth/register', async (req, res) => {
       message: 'Usuario registrado exitosamente',
       token,
       user: {
-        id: result.insertId,
-        username,
-        email,
+        id_usuario: result.insertId,
         nombre,
-        edad
+        apellido,
+        email,
+        fecha_nacimiento,
+        sexo,
+        peso_actual,
+        altura
       }
     });
 
@@ -87,45 +91,45 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-
+// LOGIN DE USUARIO (actualizado)
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { email, contraseña } = req.body;
 
-    if (!username || !password) {
+    if (!email || !contraseña) {
       return res.status(400).json({
         success: false,
-        message: 'Usuario y password requeridos'
+        message: 'Email y contraseña requeridos'
       });
     }
 
-   
+    // Buscar usuario por email
     const [users] = await pool.execute(
-      'SELECT * FROM users WHERE username = ?',
-      [username]
+      'SELECT * FROM Usuario WHERE email = ?',
+      [email]
     );
 
     if (users.length === 0) {
       return res.status(401).json({
         success: false,
-        message: 'Usuario o contraseña incorrectos'
+        message: 'Email o contraseña incorrectos'
       });
     }
 
     const user = users[0];
 
-   
-    const validPassword = await bcrypt.compare(password, user.password);
+    // Verificar contraseña
+    const validPassword = await bcrypt.compare(contraseña, user.contraseña);
     if (!validPassword) {
       return res.status(401).json({
         success: false,
-        message: 'Usuario o contraseña incorrectos'
+        message: 'Email o contraseña incorrectos'
       });
     }
 
-    
+    // Generar token
     const token = jwt.sign(
-      { userId: user.id, username: user.username },
+      { userId: user.id_usuario, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -135,11 +139,14 @@ app.post('/api/auth/login', async (req, res) => {
       message: 'Login exitoso',
       token,
       user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
+        id_usuario: user.id_usuario,
         nombre: user.nombre,
-        edad: user.edad
+        apellido: user.apellido,
+        email: user.email,
+        fecha_nacimiento: user.fecha_nacimiento,
+        sexo: user.sexo,
+        peso_actual: user.peso_actual,
+        altura: user.altura
       }
     });
 
@@ -152,7 +159,69 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// REGISTRO DE COACH (nuevo endpoint)
+app.post('/api/auth/register-coach', async (req, res) => {
+  try {
+    const { nombre, apellido, email, contraseña, fecha_nacimiento, sexo, especialidad, experiencia } = req.body;
 
+    if (!nombre || !apellido || !email || !contraseña || !especialidad) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nombre, apellido, email, contraseña y especialidad son requeridos'
+      });
+    }
+
+    // Verificar si el email ya existe
+    const [existingCoaches] = await pool.execute(
+      'SELECT id_coach FROM Coach WHERE email = ?',
+      [email]
+    );
+
+    if (existingCoaches.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'El email ya está registrado como coach'
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(contraseña, 10);
+
+    const [result] = await pool.execute(
+      `INSERT INTO Coach (nombre, apellido, email, contraseña, fecha_nacimiento, sexo, especialidad, experiencia) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [nombre, apellido, email, hashedPassword, fecha_nacimiento || null, sexo || null, especialidad, experiencia || null]
+    );
+
+    const token = jwt.sign(
+      { coachId: result.insertId, email, role: 'coach' },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Coach registrado exitosamente',
+      token,
+      coach: {
+        id_coach: result.insertId,
+        nombre,
+        apellido,
+        email,
+        especialidad,
+        experiencia
+      }
+    });
+
+  } catch (error) {
+    console.error('Error en registro coach:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// Iniciar servidor
 const startServer = async () => {
   try {
     await createTables();

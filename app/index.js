@@ -1,41 +1,53 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+
+// Usa tu IP local - la misma que usaste en register.js
+const API_URL = 'http://192.168.1.2:3000/api'; // ← CAMBIA por tu IP real
 
 export default function Login() {
   const router = useRouter();
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
- const handleLogin = async () => {
-  if (username === "admin" && password === "1234") {
-    // PRIMERO probemos con el backend
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert("Error", "Email y contraseña son requeridos");
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      const response = await fetch('http://localhost:3000/api/auth/login', {
+      const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ 
+          email, 
+          contraseña: password 
+        }),
       });
       
       const data = await response.json();
       
       if (data.success) {
-        Alert.alert("Éxito", "Login con backend funcionando!");
+        Alert.alert("Éxito", "¡Login exitoso!");
+        console.log("Usuario logueado:", data.user);
+        // Redirige a la pantalla principal
         router.push("/(drawer)/(tabs)/rutinas");
       } else {
-        Alert.alert("Error", data.message);
+        Alert.alert("Error", data.message || "Credenciales incorrectas");
       }
     } catch (error) {
-      // Si falla la conexión, usa el método antiguo
-      console.log('Backend caído, usando login local');
-      router.push("/(drawer)/(tabs)/rutinas");
+      console.log('Error de conexión:', error);
+      Alert.alert("Error", "No se pudo conectar al servidor. Verifica tu conexión.");
+    } finally {
+      setLoading(false);
     }
-  } else {
-    Alert.alert("Error", "Usuario o contraseña incorrectos");
-  }
-};
+  };
 
   return (
     <View style={styles.container}>
@@ -50,10 +62,12 @@ export default function Login() {
       <View style={styles.loginBox}>
         <TextInput
           style={styles.input}
-          placeholder="Usuario"
+          placeholder="Email"
           placeholderTextColor="#9ca3af"
-          value={username}
-          onChangeText={setUsername}
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
         />
         <TextInput
           style={styles.input}
@@ -64,8 +78,16 @@ export default function Login() {
           onChangeText={setPassword}
         />
 
-        <TouchableOpacity style={styles.button} onPress={handleLogin}>
-          <Text style={styles.buttonText}>Iniciar Sesión</Text>
+        <TouchableOpacity 
+          style={[styles.button, loading && styles.buttonDisabled]} 
+          onPress={handleLogin}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Iniciar Sesión</Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -122,6 +144,9 @@ const styles = StyleSheet.create({
     width: "100%", 
     alignItems: "center", 
     marginTop: 10 
+  },
+  buttonDisabled: {
+    backgroundColor: "#4a4a4a",
   },
   buttonText: { 
     color: "#fff", 
