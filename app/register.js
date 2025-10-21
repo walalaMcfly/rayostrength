@@ -1,3 +1,4 @@
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -5,11 +6,13 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View
 } from "react-native";
 
@@ -22,6 +25,7 @@ export default function Register() {
     apellido: "",
     email: "",
     password: "",
+    confirmPassword: "",
     fecha_nacimiento: "",
     sexo: "",
     peso: "",
@@ -32,6 +36,27 @@ export default function Register() {
   const [touched, setTouched] = useState({});
   const [loading, setLoading] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
+  
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [date, setDate] = useState(new Date());
+  const [showSexModal, setShowSexModal] = useState(false);
+
+  // Función para formatear fecha a DD/MM/YYYY
+  const formatDateToDMY = (date) => {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  // Función para convertir DD/MM/YYYY a YYYY-MM-DD
+  const formatDateToYMD = (dateString) => {
+    const parts = dateString.split('/');
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    return dateString;
+  };
 
   // Validaciones en tiempo real
   const validateField = (name, value) => {
@@ -43,23 +68,41 @@ export default function Register() {
         return "";
       
       case "email":
-        if (!value) return "Email requerido";
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return "Email inválido";
+        if (!value) return "Correo requerido";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return "Correo inválido";
         return "";
       
       case "password":
         if (!value) return "Contraseña requerida";
         if (value.length < 8) return "Mínimo 8 caracteres";
+        if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(value)) 
+          return "Debe incluir mayúsculas, minúsculas y números";
+        return "";
+      
+      case "confirmPassword":
+        if (!value) return "Confirma tu contraseña";
+        if (value !== form.password) return "Las contraseñas no coinciden";
         return "";
       
       case "fecha_nacimiento":
         if (!value) return "Fecha requerida";
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return "Formato: YYYY-MM-DD";
+        if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return "Formato: DD/MM/YYYY";
         
-        // Validar que sea una fecha válida y mayor de 16 años
-        const birthDate = new Date(value);
+        const parts = value.split('/');
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const year = parseInt(parts[2], 10);
+        const birthDate = new Date(year, month, day);
+        
+        if (isNaN(birthDate.getTime())) return "Fecha inválida";
+        
         const today = new Date();
         const age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+        
         if (age < 16) return "Debes ser mayor de 16 años";
         if (birthDate > today) return "Fecha no puede ser futura";
         return "";
@@ -69,12 +112,14 @@ export default function Register() {
         return "";
       
       case "peso":
-        if (value && (parseFloat(value) < 20 || parseFloat(value) > 300)) 
+        if (!value) return "Peso requerido para seguimiento físico";
+        if (parseFloat(value) < 20 || parseFloat(value) > 300) 
           return "Peso debe ser entre 20-300 kg";
         return "";
       
       case "altura":
-        if (value && (parseFloat(value) < 100 || parseFloat(value) > 250)) 
+        if (!value) return "Altura requerida para seguimiento físico";
+        if (parseFloat(value) < 100 || parseFloat(value) > 250) 
           return "Altura debe ser entre 100-250 cm";
         return "";
       
@@ -98,45 +143,23 @@ export default function Register() {
   const handleChange = (name, value) => {
     let formattedValue = value;
 
-    // Formato automático para fecha (YYYY-MM-DD)
     if (name === "fecha_nacimiento") {
-      // Solo números y guiones
-      formattedValue = value.replace(/[^\d-]/g, '');
+      formattedValue = value.replace(/[^\d/]/g, '');
       
-      // Auto-insertar guiones
-      if (formattedValue.length === 4 && !formattedValue.includes('-')) {
-        formattedValue = formattedValue + '-';
-      } else if (formattedValue.length === 7 && formattedValue.split('-').length === 2) {
-        formattedValue = formattedValue + '-';
+      if (formattedValue.length === 2 && !formattedValue.includes('/')) {
+        formattedValue = formattedValue + '/';
+      } else if (formattedValue.length === 5 && formattedValue.split('/').length === 2) {
+        formattedValue = formattedValue + '/';
       }
       
-      // Limitar longitud
       if (formattedValue.length > 10) {
         formattedValue = formattedValue.slice(0, 10);
       }
     }
 
-    // Formato automático para altura (solo números y punto)
-    if (name === "altura") {
+    if (name === "peso" || name === "altura") {
       formattedValue = value.replace(/[^\d.]/g, '');
       
-      // Solo un punto decimal
-      const parts = formattedValue.split('.');
-      if (parts.length > 2) {
-        formattedValue = parts[0] + '.' + parts.slice(1).join('');
-      }
-      
-      // Limitar decimales
-      if (parts.length === 2 && parts[1].length > 1) {
-        formattedValue = parts[0] + '.' + parts[1].slice(0, 1);
-      }
-    }
-
-    // Formato automático para peso (solo números y punto)
-    if (name === "peso") {
-      formattedValue = value.replace(/[^\d.]/g, '');
-      
-      // Solo un punto decimal
       const parts = formattedValue.split('.');
       if (parts.length > 2) {
         formattedValue = parts[0] + '.' + parts.slice(1).join('');
@@ -145,28 +168,47 @@ export default function Register() {
 
     setForm(prev => ({ ...prev, [name]: formattedValue }));
 
-    // Validar en tiempo real
     if (touched[name]) {
       const error = validateField(name, formattedValue);
       setErrors(prev => ({ ...prev, [name]: error }));
     }
 
-    // Calcular fortaleza de contraseña
+    if (name === "password" && touched.confirmPassword) {
+      const confirmError = validateField("confirmPassword", form.confirmPassword);
+      setErrors(prev => ({ ...prev, confirmPassword: confirmError }));
+    }
+
     if (name === "password") {
       setPasswordStrength(calculatePasswordStrength(formattedValue));
     }
   };
 
-  // Manejar blur (cuando el usuario sale del campo)
+  // Manejar blur
   const handleBlur = (name) => {
     setTouched(prev => ({ ...prev, [name]: true }));
     const error = validateField(name, form[name]);
     setErrors(prev => ({ ...prev, [name]: error }));
   };
 
+  // Manejar selección de fecha
+  const onDateChange = (event, selectedDate) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      setDate(selectedDate);
+      const formattedDate = formatDateToDMY(selectedDate);
+      handleChange('fecha_nacimiento', formattedDate);
+    }
+  };
+
+  // Manejar selección de sexo
+  const handleSexSelect = (sex) => {
+    handleChange('sexo', sex);
+    setShowSexModal(false);
+  };
+
   // Verificar si el formulario es válido
   const isFormValid = () => {
-    const requiredFields = ['nombre', 'apellido', 'email', 'password', 'fecha_nacimiento', 'sexo'];
+    const requiredFields = ['nombre', 'apellido', 'email', 'password', 'confirmPassword', 'fecha_nacimiento', 'sexo', 'peso', 'altura'];
     return requiredFields.every(field => !validateField(field, form[field])) && 
            Object.values(errors).every(error => !error);
   };
@@ -185,13 +227,26 @@ export default function Register() {
     return 'Fuerte';
   };
 
+  // Obtener texto amigable para sexo
+  const getSexText = (sex) => {
+    switch(sex) {
+      case 'M': return 'Masculino';
+      case 'F': return 'Femenino';
+      case 'Otro': return 'Otro';
+      default: return 'Seleccionar sexo *';
+    }
+  };
+
+  // Verificar si las contraseñas coinciden
+  const passwordsMatch = () => {
+    return form.password === form.confirmPassword && form.confirmPassword.length > 0;
+  };
+
   const handleRegister = async () => {
-    // Marcar todos los campos como tocados para mostrar errores
     const allTouched = {};
     Object.keys(form).forEach(key => { allTouched[key] = true; });
     setTouched(allTouched);
 
-    // Validar todos los campos
     const newErrors = {};
     Object.keys(form).forEach(key => {
       newErrors[key] = validateField(key, form[key]);
@@ -206,6 +261,8 @@ export default function Register() {
     setLoading(true);
 
     try {
+      const fechaParaBD = formatDateToYMD(form.fecha_nacimiento);
+
       const response = await fetch(`${API_URL}/auth/register`, {
         method: 'POST',
         headers: {
@@ -216,17 +273,17 @@ export default function Register() {
           apellido: form.apellido,
           email: form.email,
           contraseña: form.password,
-          fecha_nacimiento: form.fecha_nacimiento,
+          fecha_nacimiento: fechaParaBD,
           sexo: form.sexo,
-          peso_actual: form.peso ? parseFloat(form.peso) : null,
-          altura: form.altura ? parseFloat(form.altura) : null
+          peso_actual: parseFloat(form.peso),
+          altura: parseFloat(form.altura)
         }),
       });
 
       const data = await response.json();
 
       if (data.success) {
-        Alert.alert("¡Éxito!", "Cuenta creada correctamente");
+        Alert.alert("¡Éxito!", "Su cuenta fue creada correctamente");
         router.push("/");
       } else {
         Alert.alert("Error", data.message);
@@ -281,7 +338,7 @@ export default function Register() {
                 touched.apellido && errors.apellido ? styles.inputError : styles.inputSuccess,
                 touched.apellido && !errors.apellido && styles.inputSuccess
               ]}
-              placeholder="Apellido *"
+              placeholder="Apellidos *"
               placeholderTextColor="#9ca3af"
               value={form.apellido}
               onChangeText={(value) => handleChange('apellido', value)}
@@ -292,7 +349,7 @@ export default function Register() {
             )}
           </View>
 
-          {/* Email */}
+          {/* Correo */}
           <View style={styles.fieldContainer}>
             <TextInput
               style={[
@@ -300,7 +357,7 @@ export default function Register() {
                 touched.email && errors.email ? styles.inputError : styles.inputSuccess,
                 touched.email && !errors.email && styles.inputSuccess
               ]}
-              placeholder="Email *"
+              placeholder="Correo *"
               placeholderTextColor="#9ca3af"
               keyboardType="email-address"
               autoCapitalize="none"
@@ -313,7 +370,7 @@ export default function Register() {
             )}
           </View>
 
-          {/* Contraseña con indicador de fortaleza */}
+          {/* Contraseña */}
           <View style={styles.fieldContainer}>
             <TextInput
               style={[
@@ -321,13 +378,18 @@ export default function Register() {
                 touched.password && errors.password ? styles.inputError : styles.inputSuccess,
                 touched.password && !errors.password && styles.inputSuccess
               ]}
-              placeholder="Contraseña * (mín. 8 caracteres, mayúsculas, números)"
+              placeholder="Contraseña *"
               placeholderTextColor="#9ca3af"
               secureTextEntry
               value={form.password}
               onChangeText={(value) => handleChange('password', value)}
               onBlur={() => handleBlur('password')}
             />
+            
+            {/* Texto de ayuda siempre visible */}
+            <Text style={styles.helpText}>
+              Mín. 8 caracteres, con mayúsculas, minúsculas y números
+            </Text>
             
             {form.password.length > 0 && (
               <View style={styles.passwordStrengthContainer}>
@@ -353,40 +415,78 @@ export default function Register() {
             )}
           </View>
 
-          {/* Fecha de Nacimiento */}
+          {/* Confirmar Contraseña */}
           <View style={styles.fieldContainer}>
             <TextInput
               style={[
                 styles.input, 
-                touched.fecha_nacimiento && errors.fecha_nacimiento ? styles.inputError : styles.inputSuccess,
-                touched.fecha_nacimiento && !errors.fecha_nacimiento && styles.inputSuccess
+                touched.confirmPassword && errors.confirmPassword ? styles.inputError : styles.inputSuccess,
+                touched.confirmPassword && passwordsMatch() && styles.inputSuccess
               ]}
-              placeholder="Fecha de nacimiento * (YYYY-MM-DD)"
+              placeholder="Confirmar contraseña *"
               placeholderTextColor="#9ca3af"
-              keyboardType="numbers-and-punctuation"
-              value={form.fecha_nacimiento}
-              onChangeText={(value) => handleChange('fecha_nacimiento', value)}
-              onBlur={() => handleBlur('fecha_nacimiento')}
+              secureTextEntry
+              value={form.confirmPassword}
+              onChangeText={(value) => handleChange('confirmPassword', value)}
+              onBlur={() => handleBlur('confirmPassword')}
             />
-            {touched.fecha_nacimiento && errors.fecha_nacimiento && (
-              <Text style={styles.errorText}>{errors.fecha_nacimiento}</Text>
+            
+            {touched.confirmPassword && errors.confirmPassword && (
+              <Text style={styles.errorText}>{errors.confirmPassword}</Text>
+            )}
+            
+            {touched.confirmPassword && passwordsMatch() && (
+              <Text style={styles.successText}>✓ Las contraseñas coinciden</Text>
             )}
           </View>
 
-          {/* Sexo */}
+          {/* Fecha de Nacimiento */}
           <View style={styles.fieldContainer}>
-            <TextInput
+            <TouchableOpacity 
               style={[
                 styles.input, 
+                styles.dateInput,
+                touched.fecha_nacimiento && errors.fecha_nacimiento ? styles.inputError : styles.inputSuccess,
+                touched.fecha_nacimiento && !errors.fecha_nacimiento && styles.inputSuccess
+              ]}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Text style={form.fecha_nacimiento ? styles.dateText : styles.placeholderText}>
+                {form.fecha_nacimiento || "Fecha de nacimiento * "}
+              </Text>
+              <Text style={styles.calendarIcon}>📅</Text>
+            </TouchableOpacity>
+            {touched.fecha_nacimiento && errors.fecha_nacimiento && (
+              <Text style={styles.errorText}>{errors.fecha_nacimiento}</Text>
+            )}
+            
+            {showDatePicker && (
+              <DateTimePicker
+                value={date}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={onDateChange}
+                maximumDate={new Date()}
+              />
+            )}
+          </View>
+
+          {/* Selector de Sexo */}
+          <View style={styles.fieldContainer}>
+            <TouchableOpacity 
+              style={[
+                styles.input, 
+                styles.sexInput,
                 touched.sexo && errors.sexo ? styles.inputError : styles.inputSuccess,
                 touched.sexo && !errors.sexo && styles.inputSuccess
               ]}
-              placeholder="Sexo * (M, F, Otro)"
-              placeholderTextColor="#9ca3af"
-              value={form.sexo}
-              onChangeText={(value) => handleChange('sexo', value)}
-              onBlur={() => handleBlur('sexo')}
-            />
+              onPress={() => setShowSexModal(true)}
+            >
+              <Text style={form.sexo ? styles.sexText : styles.placeholderText}>
+                {getSexText(form.sexo)}
+              </Text>
+              <Text style={styles.dropdownIcon}>▼</Text>
+            </TouchableOpacity>
             {touched.sexo && errors.sexo && (
               <Text style={styles.errorText}>{errors.sexo}</Text>
             )}
@@ -397,9 +497,10 @@ export default function Register() {
             <TextInput
               style={[
                 styles.input, 
-                touched.peso && errors.peso ? styles.inputError : styles.inputSuccess
+                touched.peso && errors.peso ? styles.inputError : styles.inputSuccess,
+                touched.peso && !errors.peso && styles.inputSuccess
               ]}
-              placeholder="Peso (kg) - Opcional"
+              placeholder="Peso * (kg)"
               placeholderTextColor="#9ca3af"
               keyboardType="decimal-pad"
               value={form.peso}
@@ -416,9 +517,10 @@ export default function Register() {
             <TextInput
               style={[
                 styles.input, 
-                touched.altura && errors.altura ? styles.inputError : styles.inputSuccess
+                touched.altura && errors.altura ? styles.inputError : styles.inputSuccess,
+                touched.altura && !errors.altura && styles.inputSuccess
               ]}
-              placeholder="Altura (cm) - Opcional"
+              placeholder="Altura * (cm)"
               placeholderTextColor="#9ca3af"
               keyboardType="decimal-pad"
               value={form.altura}
@@ -439,7 +541,7 @@ export default function Register() {
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.buttonText}>
-                {isFormValid() ? "Registrarse" : "Completa el formulario"}
+                {isFormValid() ? "Crear Cuenta" : "Completa todos los campos"}
               </Text>
             )}
           </TouchableOpacity>
@@ -451,6 +553,52 @@ export default function Register() {
             <Text style={styles.loginText}> Inicia sesión aquí</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Modal para selección de sexo */}
+        <Modal
+          visible={showSexModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowSexModal(false)}
+        >
+          <TouchableWithoutFeedback onPress={() => setShowSexModal(false)}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>Selecciona tu sexo</Text>
+                  
+                  <TouchableOpacity 
+                    style={styles.sexOption}
+                    onPress={() => handleSexSelect('M')}
+                  >
+                    <Text style={styles.sexOptionText}>Masculino</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.sexOption}
+                    onPress={() => handleSexSelect('F')}
+                  >
+                    <Text style={styles.sexOptionText}>Femenino</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.sexOption}
+                    onPress={() => handleSexSelect('Otro')}
+                  >
+                    <Text style={styles.sexOptionText}>Otro</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.modalCancel}
+                    onPress={() => setShowSexModal(false)}
+                  >
+                    <Text style={styles.modalCancelText}>Cancelar</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -490,11 +638,49 @@ const styles = {
     borderWidth: 1,
     borderColor: '#3a3a3a',
   },
+  // NUEVO estilo para texto de ayuda
+  helpText: {
+    color: '#9ca3af',
+    fontSize: 12,
+    marginTop: 5,
+    marginBottom: 5,
+    fontStyle: 'italic',
+  },
+  dateInput: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sexInput: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dateText: {
+    color: 'white',
+    fontSize: 16,
+  },
+  sexText: {
+    color: 'white',
+    fontSize: 16,
+  },
+  placeholderText: {
+    color: '#9ca3af',
+    fontSize: 16,
+  },
+  calendarIcon: {
+    fontSize: 18,
+    color: '#9ca3af',
+  },
+  dropdownIcon: {
+    fontSize: 12,
+    color: '#9ca3af',
+  },
   inputError: {
     borderColor: '#ff4444',
   },
   inputSuccess: {
-    borderColor: '#00c851',
+    borderColor: '#d8bb18ff',
   },
   errorText: {
     color: '#ff4444',
@@ -552,5 +738,46 @@ const styles = {
     color: '#007bff',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 15,
+    padding: 20,
+    width: '80%',
+    maxWidth: 300,
+  },
+  modalTitle: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  sexOption: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#3a3a3a',
+  },
+  sexOptionText: {
+    color: 'white',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  modalCancel: {
+    padding: 15,
+    marginTop: 10,
+    backgroundColor: '#3a3a3a',
+    borderRadius: 8,
+  },
+  modalCancelText: {
+    color: '#9ca3af',
+    fontSize: 16,
+    textAlign: 'center',
   },
 };
