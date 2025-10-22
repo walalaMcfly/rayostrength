@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,6 +19,7 @@ import { colors } from "../../constants/theme";
 const API_URL = 'https://rayostrength-production.up.railway.app/api';
 
 export default function Perfil() {
+  const router = useRouter();
   const [userData, setUserData] = useState({
     nombre: "",
     apellido: "",
@@ -35,7 +37,7 @@ export default function Perfil() {
   const [showSexModal, setShowSexModal] = useState(false);
   const [errors, setErrors] = useState({});
 
-  // Cargar datos del perfil cuando la pantalla se enfoca
+
   useFocusEffect(
     useCallback(() => {
       loadUserProfile();
@@ -45,9 +47,9 @@ export default function Perfil() {
   const loadUserProfile = async () => {
     try {
       setLoading(true);
-      const token = await AsyncStorage.getItem('userToken');
-      
       console.log('🔄 Cargando perfil...');
+      
+      const token = await AsyncStorage.getItem('userToken');
       
       if (!token) {
         Alert.alert("Error", "No se encontró token de autenticación");
@@ -62,10 +64,8 @@ export default function Perfil() {
         },
       });
 
-      console.log('📡 Status de respuesta:', response.status);
-
       const data = await response.json();
-      console.log('📨 Datos del servidor:', data);
+      console.log('📨 Respuesta del servidor:', data);
 
       if (data.success) {
         const user = data.user;
@@ -79,7 +79,7 @@ export default function Perfil() {
           altura: user.altura ? user.altura.toString() : ""
         };
         
-        console.log('📝 Datos formateados:', formattedData);
+        console.log('📝 Datos formateados para el estado:', formattedData);
         
         setUserData(formattedData);
         setOriginalData(formattedData);
@@ -91,6 +91,29 @@ export default function Perfil() {
       Alert.alert("Error", "No se pudo conectar al servidor");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleChange = (name, value) => {
+    let formattedValue = value;
+
+    if (name === "peso_actual" || name === "altura") {
+      formattedValue = value.replace(/[^\d.]/g, '');
+      const parts = formattedValue.split('.');
+      if (parts.length > 2) {
+        formattedValue = parts[0] + '.' + parts.slice(1).join('');
+      }
+    }
+
+    if (name === "edad") {
+      formattedValue = value.replace(/[^0-9]/g, '');
+    }
+
+    setUserData(prev => ({ ...prev, [name]: formattedValue }));
+
+    if (editing) {
+      const error = validateField(name, formattedValue);
+      setErrors(prev => ({ ...prev, [name]: error }));
     }
   };
 
@@ -125,31 +148,6 @@ export default function Perfil() {
     }
   };
 
-  const handleChange = (name, value) => {
-    let formattedValue = value;
-
-    // Formato para campos numéricos
-    if (name === "peso_actual" || name === "altura") {
-      formattedValue = value.replace(/[^\d.]/g, '');
-      const parts = formattedValue.split('.');
-      if (parts.length > 2) {
-        formattedValue = parts[0] + '.' + parts.slice(1).join('');
-      }
-    }
-
-    if (name === "edad") {
-      formattedValue = value.replace(/[^0-9]/g, '');
-    }
-
-    setUserData(prev => ({ ...prev, [name]: formattedValue }));
-
-    // Validar en tiempo real si estamos editando
-    if (editing) {
-      const error = validateField(name, formattedValue);
-      setErrors(prev => ({ ...prev, [name]: error }));
-    }
-  };
-
   const handleSexSelect = (sex) => {
     handleChange('sexo', sex);
     setShowSexModal(false);
@@ -176,16 +174,14 @@ export default function Perfil() {
   };
 
   const saveProfile = async () => {
-    // Validar todos los campos
     const newErrors = {};
     Object.keys(userData).forEach(key => {
-      if (key !== 'email') { // El email no se puede editar
+      if (key !== 'email') {
         newErrors[key] = validateField(key, userData[key]);
       }
     });
     setErrors(newErrors);
 
-    // Verificar si hay errores
     const hasErrors = Object.values(newErrors).some(error => error !== "");
     if (hasErrors) {
       Alert.alert("Error", "Por favor corrige los errores en el formulario");
@@ -218,7 +214,6 @@ export default function Perfil() {
         Alert.alert("¡Éxito!", "Perfil actualizado correctamente");
         setOriginalData(userData);
         setEditing(false);
-        // Recargar datos para asegurar sincronización
         await loadUserProfile();
       } else {
         Alert.alert("Error", data.message || "No se pudo actualizar el perfil");
@@ -240,10 +235,12 @@ export default function Perfil() {
     );
   }
 
+  // DEBUG: Ver qué se está renderizando
+  console.log('🎨 Renderizando con datos:', userData);
+
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.header}>
-        <Text style={styles.title}>Mi Perfil</Text>
         {!editing ? (
           <TouchableOpacity style={styles.editButton} onPress={startEditing}>
             <Text style={styles.editButtonText}>✏️ Editar</Text>
@@ -283,7 +280,7 @@ export default function Perfil() {
             value={userData.nombre}
             onChangeText={(value) => handleChange('nombre', value)}
             placeholder="Tu nombre"
-            placeholderTextColor={colors.placeholder}
+            placeholderTextColor="#666"
             editable={editing}
           />
           {errors.nombre && <Text style={styles.errorText}>{errors.nombre}</Text>}
@@ -300,7 +297,7 @@ export default function Perfil() {
             value={userData.apellido}
             onChangeText={(value) => handleChange('apellido', value)}
             placeholder="Tu apellido"
-            placeholderTextColor={colors.placeholder}
+            placeholderTextColor="#666"
             editable={editing}
           />
           {errors.apellido && <Text style={styles.errorText}>{errors.apellido}</Text>}
@@ -312,7 +309,7 @@ export default function Perfil() {
             style={[styles.input, styles.inputDisabled]}
             value={userData.email}
             placeholder="Tu email"
-            placeholderTextColor={colors.placeholder}
+            placeholderTextColor="#666"
             editable={false}
           />
           <Text style={styles.helpText}>El email no se puede modificar</Text>
@@ -329,7 +326,7 @@ export default function Perfil() {
             value={userData.edad}
             onChangeText={(value) => handleChange('edad', value)}
             placeholder="Tu edad"
-            placeholderTextColor={colors.placeholder}
+            placeholderTextColor="#666"
             keyboardType="numeric"
             editable={editing}
             maxLength={3}
@@ -350,11 +347,9 @@ export default function Perfil() {
               <Text style={styles.dropdownIcon}>▼</Text>
             </TouchableOpacity>
           ) : (
-            <TextInput
-              style={[styles.input, styles.inputDisabled]}
-              value={getSexText(userData.sexo)}
-              editable={false}
-            />
+            <View style={[styles.input, styles.inputDisabled]}>
+              <Text style={styles.sexText}>{getSexText(userData.sexo)}</Text>
+            </View>
           )}
         </View>
       </View>
@@ -374,7 +369,7 @@ export default function Perfil() {
             value={userData.peso_actual}
             onChangeText={(value) => handleChange('peso_actual', value)}
             placeholder="Tu peso en kg"
-            placeholderTextColor={colors.placeholder}
+            placeholderTextColor="#666"
             keyboardType="decimal-pad"
             editable={editing}
           />
@@ -392,7 +387,7 @@ export default function Perfil() {
             value={userData.altura}
             onChangeText={(value) => handleChange('altura', value)}
             placeholder="Tu altura en cm"
-            placeholderTextColor={colors.placeholder}
+            placeholderTextColor="#666"
             keyboardType="decimal-pad"
             editable={editing}
           />
@@ -452,8 +447,10 @@ export default function Perfil() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#1a1a1a', 
+  },
+  contentContainer: {
     padding: 16,
-    backgroundColor: colors.background,
   },
   centered: {
     justifyContent: 'center',
@@ -464,25 +461,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
+    paddingHorizontal: 8,
   },
   title: {
     fontSize: 24,
     fontWeight: "bold",
-    color: colors.text,
+    color: '#ffffff', 
   },
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: colors.text,
+    color: '#ffffff',
   },
   editButton: {
-    backgroundColor: colors.accent,
+    backgroundColor: '#fcde7cff',
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 8,
   },
   editButtonText: {
-    color: colors.text,
+    color: '#000000', 
     fontWeight: 'bold',
   },
   actionButtons: {
@@ -490,13 +488,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   cancelButton: {
-    backgroundColor: colors.border,
+    backgroundColor: '#3a3a3a',
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 8,
   },
   cancelButtonText: {
-    color: colors.text,
+    color: '#ffffff',
     fontWeight: 'bold',
   },
   saveButton: {
@@ -513,7 +511,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#6c757d',
   },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: '#2a2a2a',
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
@@ -522,7 +520,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
     marginBottom: 15,
-    color: colors.accent,
+    color: '#fcde7cff',
   },
   fieldContainer: {
     marginBottom: 15,
@@ -531,19 +529,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     marginBottom: 5,
-    color: colors.text,
+    color: '#ffffff',
   },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#3a3a3a',
     borderRadius: 8,
     padding: 12,
-    color: colors.text,
+    color: '#ffffff', 
     fontSize: 16,
+    backgroundColor: '#1a1a1a',
   },
   inputDisabled: {
-    backgroundColor: colors.border,
-    color: colors.placeholder,
+    backgroundColor: '#3a3a3a',
+    color: '#cccccc',
   },
   inputError: {
     borderColor: '#ff4444',
@@ -554,19 +553,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sexText: {
-    color: colors.text,
+    color: '#ffffff',
     fontSize: 16,
   },
   placeholderText: {
-    color: colors.placeholder,
+    color: '#666666',
     fontSize: 16,
   },
   dropdownIcon: {
     fontSize: 12,
-    color: colors.placeholder,
+    color: '#666666',
   },
   helpText: {
-    color: colors.placeholder,
+    color: '#666666',
     fontSize: 12,
     marginTop: 5,
     fontStyle: 'italic',
@@ -583,14 +582,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: colors.card,
+    backgroundColor: '#2a2a2a',
     borderRadius: 15,
     padding: 20,
     width: '80%',
     maxWidth: 300,
   },
   modalTitle: {
-    color: colors.text,
+    color: '#ffffff',
     fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',
@@ -599,21 +598,21 @@ const styles = StyleSheet.create({
   sexOption: {
     padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: '#3a3a3a',
   },
   sexOptionText: {
-    color: colors.text,
+    color: '#ffffff',
     fontSize: 16,
     textAlign: 'center',
   },
   modalCancel: {
     padding: 15,
     marginTop: 10,
-    backgroundColor: colors.border,
+    backgroundColor: '#3a3a3a',
     borderRadius: 8,
   },
   modalCancelText: {
-    color: colors.placeholder,
+    color: '#cccccc',
     fontSize: 16,
     textAlign: 'center',
   },

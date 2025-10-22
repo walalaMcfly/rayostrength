@@ -1,166 +1,208 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from "react-native";
 
-
-const API_URL = 'https://rayostrength-production.up.railway.app/api'; 
+const API_URL = 'https://rayostrength-production.up.railway.app/api';
 
 export default function Login() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  
+
+  const [form, setForm] = useState({
+    email: "",
+    password: ""
+  });
+  
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert("Error", "Email y contraseña son requeridos");
-      return;
-    }
-
-    setLoading(true);
-
     try {
+      if (!form.email || !form.password) {
+        Alert.alert("Error", "Por favor completa todos los campos");
+        return;
+      }
+
+      setLoading(true);
+      console.log('🔄 Iniciando login...');
+      
       const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          email, 
-          contraseña: password 
+        body: JSON.stringify({
+          email: form.email,
+          contraseña: form.password
         }),
       });
+
+      console.log('📨 Status de respuesta:', response.status);
       
       const data = await response.json();
-      
+      console.log('📨 Respuesta completa del login:', data);
+
       if (data.success) {
-        Alert.alert("Éxito", "¡Login exitoso!");
-        console.log("Usuario logueado:", data.user);
-        router.push("/(drawer)/(tabs)/rutinas");
-      } else {
-        Alert.alert("Error", data.message || "Credenciales incorrectas");
+        await AsyncStorage.setItem('userToken', data.token);
+        console.log('✅ Token guardado exitosamente en AsyncStorage');
+        console.log('✅ Token:', data.token.substring(0, 20) + '...');
+  
+        Alert.alert("¡Éxito!", "Login exitoso");
+        router.replace('/(drawer)/(tabs)/rutinas'); 
+        Alert.alert("Error", data.message || "Error en el login");
       }
     } catch (error) {
-      console.log('Error de conexión:', error);
-      Alert.alert("Error", "No se pudo conectar al servidor. Verifica tu conexión.");
+      console.error('❌ Error completo en login:', error);
+      Alert.alert("Error", "No se pudo conectar al servidor: " + error.message);
     } finally {
       setLoading(false);
     }
   };
 
+  
+  const handleChange = (name, value) => {
+    setForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
   return (
-    <View style={styles.container}>
-      {/* Logo arriba */}
-      <Image 
-        source={require("../assets/images/logo.png")} 
-        style={styles.logo} 
-        resizeMode="contain" 
-      />
-
-      {/* Caja rectangular para el login */}
-      <View style={styles.loginBox}>
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          placeholderTextColor="#9ca3af"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Contraseña"
-          placeholderTextColor="#9ca3af"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <View style={styles.content}>
+        <Image 
+          source={require("../assets/images/logo.png")} 
+          style={styles.logo} 
+          resizeMode="contain" 
         />
 
-        <TouchableOpacity 
-          style={[styles.button, loading && styles.buttonDisabled]} 
-          onPress={handleLogin}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Iniciar Sesión</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+        <View style={styles.loginBox}>
+          <Text style={styles.title}>Iniciar Sesión</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Correo electrónico"
+            placeholderTextColor="#9ca3af"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            value={form.email}
+            onChangeText={(value) => handleChange('email', value)}
+          />
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Contraseña"
+            placeholderTextColor="#9ca3af"
+            secureTextEntry
+            value={form.password}
+            onChangeText={(value) => handleChange('password', value)}
+          />
 
-      {/* Footer con registro */}
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>¿No tienes tu cuenta creada?</Text>
-        <TouchableOpacity onPress={() => router.push("/register")}>
-          <Text style={styles.registerText}> Regístrate aquí</Text>
-        </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.button, loading && styles.buttonDisabled]} 
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Iniciar Sesión</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>¿No tienes cuenta?</Text>
+          <TouchableOpacity onPress={() => router.push("/register")}>
+            <Text style={styles.registerText}> Regístrate aquí</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    justifyContent: "center", 
-    alignItems: "center", 
-    padding: 20, 
-    backgroundColor: "#111111ff" 
+  container: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+  },
+  content: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center',
   },
   logo: {
-    width: 250,
-    height: 100,
+    width: 150,
+    height: 150,
+    alignSelf: 'center',
     marginBottom: 40,
   },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
+    textAlign: 'center',
+    marginBottom: 30,
+  },
   loginBox: {
-    width: "100%",
-    backgroundColor: "#1e1e1e",
+    backgroundColor: '#2a2a2a',
     padding: 20,
-    borderRadius: 15,
+    borderRadius: 10,
+    marginBottom: 20,
+  },
+  input: {
+    backgroundColor: '#3a3a3a',
+    color: 'white',
+    padding: 15,
+    borderRadius: 8,
+    fontSize: 16,
     borderWidth: 1,
-    borderColor: "#333",
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 5,
+    borderColor: '#3a3a3a',
+    marginBottom: 15,
   },
-  input: { 
-    width: "100%", 
-    backgroundColor: "#424040ff", 
-    padding: 12, 
-    borderRadius: 10, 
-    marginBottom: 15, 
-    borderWidth: 1, 
-    borderColor: "#333", 
-    color: "#fff" 
-  },
-  button: { 
-    backgroundColor: "#6e7275ff", 
-    padding: 15, 
-    borderRadius: 10, 
-    width: "100%", 
-    alignItems: "center", 
-    marginTop: 10 
+  button: {
+    backgroundColor: '#007bff',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
   },
   buttonDisabled: {
-    backgroundColor: "#4a4a4a",
+    backgroundColor: '#6c757d',
   },
-  buttonText: { 
-    color: "#fff", 
-    fontSize: 16, 
-    fontWeight: "bold" 
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
-  footer: { 
-    flexDirection: "row", 
-    marginTop: 30 
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  footerText: { 
-    color: "#9ca3af" 
+  footerText: {
+    color: '#9ca3af',
+    fontSize: 14,
   },
-  registerText: { 
-    color: "#c0b398ff", 
-    fontWeight: "bold" 
-  }
+  registerText: {
+    color: '#007bff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
 });
