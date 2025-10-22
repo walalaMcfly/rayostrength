@@ -100,92 +100,75 @@ export default function Register() {
     return strength;
   };
 
-  // Manejar cambios en los campos
+  
   const handleChange = (name, value) => {
     let formattedValue = value;
-
-    // Formato automático para peso (solo números y punto)
     if (name === "peso") {
       formattedValue = value.replace(/[^\d.]/g, '');
-      
-      // Solo un punto decimal
       const parts = formattedValue.split('.');
       if (parts.length > 2) {
         formattedValue = parts[0] + '.' + parts.slice(1).join('');
       }
     }
-
-    // Formato automático para altura (solo números y punto)
+ 
     if (name === "altura") {
       formattedValue = value.replace(/[^\d.]/g, '');
-      
-      // Solo un punto decimal
       const parts = formattedValue.split('.');
       if (parts.length > 2) {
         formattedValue = parts[0] + '.' + parts.slice(1).join('');
       }
     }
 
-    // Para edad, solo números
     if (name === "edad") {
       formattedValue = value.replace(/[^0-9]/g, '');
     }
 
     setForm(prev => ({ ...prev, [name]: formattedValue }));
 
-    // Validar en tiempo real
     if (touched[name]) {
       const error = validateField(name, formattedValue);
       setErrors(prev => ({ ...prev, [name]: error }));
     }
 
-    // Si cambia la contraseña, validar también la confirmación
     if (name === "password" && touched.confirmPassword) {
       const confirmError = validateField("confirmPassword", form.confirmPassword);
       setErrors(prev => ({ ...prev, confirmPassword: confirmError }));
     }
-
-    // Calcular fortaleza de contraseña
     if (name === "password") {
       setPasswordStrength(calculatePasswordStrength(formattedValue));
     }
   };
 
-  // Manejar blur (cuando el usuario sale del campo)
   const handleBlur = (name) => {
     setTouched(prev => ({ ...prev, [name]: true }));
     const error = validateField(name, form[name]);
     setErrors(prev => ({ ...prev, [name]: error }));
   };
 
-  // Manejar selección de sexo
+
   const handleSexSelect = (sex) => {
     handleChange('sexo', sex);
     setShowSexModal(false);
   };
 
-  // Verificar si el formulario es válido
   const isFormValid = () => {
     const requiredFields = ['nombre', 'apellido', 'email', 'password', 'confirmPassword', 'edad', 'sexo', 'peso', 'altura'];
     return requiredFields.every(field => !validateField(field, form[field])) && 
            Object.values(errors).every(error => !error);
   };
-
-  // Obtener color de fortaleza de contraseña
+ 
   const getPasswordStrengthColor = () => {
     if (passwordStrength < 50) return '#ff4444';
     if (passwordStrength < 75) return '#ffaa00';
     return '#00c851';
   };
-
-  // Obtener texto de fortaleza de contraseña
+ 
   const getPasswordStrengthText = () => {
     if (passwordStrength < 50) return 'Débil';
     if (passwordStrength < 75) return 'Media';
     return 'Fuerte';
   };
 
-  // Obtener texto amigable para sexo
   const getSexText = (sex) => {
     switch(sex) {
       case 'M': return 'Masculino';
@@ -195,18 +178,15 @@ export default function Register() {
     }
   };
 
-  // Verificar si las contraseñas coinciden
   const passwordsMatch = () => {
     return form.password === form.confirmPassword && form.confirmPassword.length > 0;
   };
 
   const handleRegister = async () => {
-    // Marcar todos los campos como tocados para mostrar errores
     const allTouched = {};
     Object.keys(form).forEach(key => { allTouched[key] = true; });
     setTouched(allTouched);
-
-    // Validar todos los campos
+    
     const newErrors = {};
     Object.keys(form).forEach(key => {
       newErrors[key] = validateField(key, form[key]);
@@ -220,39 +200,44 @@ export default function Register() {
 
     setLoading(true);
 
-    try {
-      const response = await fetch(`${API_URL}/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          nombre: form.nombre,
-          apellido: form.apellido,
-          email: form.email,
-          contraseña: form.password,
-          edad: parseInt(form.edad) || 0,
-          sexo: form.sexo,
-          peso_actual: parseFloat(form.peso),
-          altura: parseFloat(form.altura)
-        }),
-      });
+     try {
+    const response = await fetch(`${API_URL}/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        nombre: form.nombre,
+        apellido: form.apellido,
+        email: form.email,
+        contraseña: form.password,
+        edad: parseInt(form.edad),
+        sexo: form.sexo,
+        peso_actual: parseFloat(form.peso),
+        altura: parseFloat(form.altura)
+      }),
+    });
 
-      const data = await response.json();
+    const data = await response.json();
 
-      if (data.success) {
-        Alert.alert("¡Éxito!", "Su cuenta fue creada correctamente");
-        router.push("/");
-      } else {
-        Alert.alert("Error", data.message);
-      }
-    } catch (error) {
-      console.error('Error registro:', error);
-      Alert.alert("Error", "No se pudo conectar al servidor");
-    } finally {
-      setLoading(false);
+    if (data.success) {
+      
+      await AsyncStorage.setItem('userToken', data.token);
+      await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+    
+      console.log('✅ Token guardado después del registro');
+      Alert.alert("¡Éxito!", "Su cuenta fue creada correctamente");
+      router.replace('/(tabs)'); 
+    } else {
+      Alert.alert("Error", data.message);
     }
-  };
+  } catch (error) {
+    console.error('Error registro:', error);
+    Alert.alert("Error", "No se pudo conectar al servidor");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <KeyboardAvoidingView 
