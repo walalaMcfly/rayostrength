@@ -1,4 +1,3 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -26,7 +25,7 @@ export default function Register() {
     email: "",
     password: "",
     confirmPassword: "",
-    fecha_nacimiento: "",
+    edad: "",
     sexo: "",
     peso: "",
     altura: ""
@@ -37,26 +36,7 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
   
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [date, setDate] = useState(new Date());
   const [showSexModal, setShowSexModal] = useState(false);
-
-  // Función para formatear fecha a DD/MM/YYYY
-  const formatDateToDMY = (date) => {
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  // Función para convertir DD/MM/YYYY a YYYY-MM-DD
-  const formatDateToYMD = (dateString) => {
-    const parts = dateString.split('/');
-    if (parts.length === 3) {
-      return `${parts[2]}-${parts[1]}-${parts[0]}`;
-    }
-    return dateString;
-  };
 
   // Validaciones en tiempo real
   const validateField = (name, value) => {
@@ -84,27 +64,8 @@ export default function Register() {
         if (value !== form.password) return "Las contraseñas no coinciden";
         return "";
       
-      case "fecha_nacimiento":
-        if (!value) return "Fecha requerida";
-        if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return "Formato: DD/MM/YYYY";
-        
-        const parts = value.split('/');
-        const day = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10) - 1;
-        const year = parseInt(parts[2], 10);
-        const birthDate = new Date(year, month, day);
-        
-        if (isNaN(birthDate.getTime())) return "Fecha inválida";
-        
-        const today = new Date();
-        const age = today.getFullYear() - birthDate.getFullYear();
-        const monthDiff = today.getMonth() - birthDate.getMonth();
-        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-          age--;
-        }
-        
-        if (age < 16) return "Debes ser mayor de 16 años";
-        if (birthDate > today) return "Fecha no puede ser futura";
+      case "edad":
+        if (!value) return "Edad requerida";
         return "";
       
       case "sexo":
@@ -143,61 +104,58 @@ export default function Register() {
   const handleChange = (name, value) => {
     let formattedValue = value;
 
-    if (name === "fecha_nacimiento") {
-      formattedValue = value.replace(/[^\d/]/g, '');
-      
-      if (formattedValue.length === 2 && !formattedValue.includes('/')) {
-        formattedValue = formattedValue + '/';
-      } else if (formattedValue.length === 5 && formattedValue.split('/').length === 2) {
-        formattedValue = formattedValue + '/';
-      }
-      
-      if (formattedValue.length > 10) {
-        formattedValue = formattedValue.slice(0, 10);
-      }
-    }
-
-    if (name === "peso" || name === "altura") {
+    // Formato automático para peso (solo números y punto)
+    if (name === "peso") {
       formattedValue = value.replace(/[^\d.]/g, '');
       
+      // Solo un punto decimal
       const parts = formattedValue.split('.');
       if (parts.length > 2) {
         formattedValue = parts[0] + '.' + parts.slice(1).join('');
       }
     }
 
+    // Formato automático para altura (solo números y punto)
+    if (name === "altura") {
+      formattedValue = value.replace(/[^\d.]/g, '');
+      
+      // Solo un punto decimal
+      const parts = formattedValue.split('.');
+      if (parts.length > 2) {
+        formattedValue = parts[0] + '.' + parts.slice(1).join('');
+      }
+    }
+
+    // Para edad, solo números
+    if (name === "edad") {
+      formattedValue = value.replace(/[^0-9]/g, '');
+    }
+
     setForm(prev => ({ ...prev, [name]: formattedValue }));
 
+    // Validar en tiempo real
     if (touched[name]) {
       const error = validateField(name, formattedValue);
       setErrors(prev => ({ ...prev, [name]: error }));
     }
 
+    // Si cambia la contraseña, validar también la confirmación
     if (name === "password" && touched.confirmPassword) {
       const confirmError = validateField("confirmPassword", form.confirmPassword);
       setErrors(prev => ({ ...prev, confirmPassword: confirmError }));
     }
 
+    // Calcular fortaleza de contraseña
     if (name === "password") {
       setPasswordStrength(calculatePasswordStrength(formattedValue));
     }
   };
 
-  // Manejar blur
+  // Manejar blur (cuando el usuario sale del campo)
   const handleBlur = (name) => {
     setTouched(prev => ({ ...prev, [name]: true }));
     const error = validateField(name, form[name]);
     setErrors(prev => ({ ...prev, [name]: error }));
-  };
-
-  // Manejar selección de fecha
-  const onDateChange = (event, selectedDate) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      setDate(selectedDate);
-      const formattedDate = formatDateToDMY(selectedDate);
-      handleChange('fecha_nacimiento', formattedDate);
-    }
   };
 
   // Manejar selección de sexo
@@ -208,7 +166,7 @@ export default function Register() {
 
   // Verificar si el formulario es válido
   const isFormValid = () => {
-    const requiredFields = ['nombre', 'apellido', 'email', 'password', 'confirmPassword', 'fecha_nacimiento', 'sexo', 'peso', 'altura'];
+    const requiredFields = ['nombre', 'apellido', 'email', 'password', 'confirmPassword', 'edad', 'sexo', 'peso', 'altura'];
     return requiredFields.every(field => !validateField(field, form[field])) && 
            Object.values(errors).every(error => !error);
   };
@@ -243,10 +201,12 @@ export default function Register() {
   };
 
   const handleRegister = async () => {
+    // Marcar todos los campos como tocados para mostrar errores
     const allTouched = {};
     Object.keys(form).forEach(key => { allTouched[key] = true; });
     setTouched(allTouched);
 
+    // Validar todos los campos
     const newErrors = {};
     Object.keys(form).forEach(key => {
       newErrors[key] = validateField(key, form[key]);
@@ -261,8 +221,6 @@ export default function Register() {
     setLoading(true);
 
     try {
-      const fechaParaBD = formatDateToYMD(form.fecha_nacimiento);
-
       const response = await fetch(`${API_URL}/auth/register`, {
         method: 'POST',
         headers: {
@@ -273,7 +231,7 @@ export default function Register() {
           apellido: form.apellido,
           email: form.email,
           contraseña: form.password,
-          fecha_nacimiento: fechaParaBD,
+          edad: parseInt(form.edad) || 0,
           sexo: form.sexo,
           peso_actual: parseFloat(form.peso),
           altura: parseFloat(form.altura)
@@ -338,7 +296,7 @@ export default function Register() {
                 touched.apellido && errors.apellido ? styles.inputError : styles.inputSuccess,
                 touched.apellido && !errors.apellido && styles.inputSuccess
               ]}
-              placeholder="Apellidos *"
+              placeholder="Apellido *"
               placeholderTextColor="#9ca3af"
               value={form.apellido}
               onChangeText={(value) => handleChange('apellido', value)}
@@ -349,7 +307,7 @@ export default function Register() {
             )}
           </View>
 
-          {/* Correo */}
+          {/* Email */}
           <View style={styles.fieldContainer}>
             <TextInput
               style={[
@@ -440,34 +398,24 @@ export default function Register() {
             )}
           </View>
 
-          {/* Fecha de Nacimiento */}
+          {/* Edad */}
           <View style={styles.fieldContainer}>
-            <TouchableOpacity 
+            <TextInput
               style={[
                 styles.input, 
-                styles.dateInput,
-                touched.fecha_nacimiento && errors.fecha_nacimiento ? styles.inputError : styles.inputSuccess,
-                touched.fecha_nacimiento && !errors.fecha_nacimiento && styles.inputSuccess
+                touched.edad && errors.edad ? styles.inputError : styles.inputSuccess,
+                touched.edad && !errors.edad && styles.inputSuccess
               ]}
-              onPress={() => setShowDatePicker(true)}
-            >
-              <Text style={form.fecha_nacimiento ? styles.dateText : styles.placeholderText}>
-                {form.fecha_nacimiento || "Fecha de nacimiento * "}
-              </Text>
-              <Text style={styles.calendarIcon}>📅</Text>
-            </TouchableOpacity>
-            {touched.fecha_nacimiento && errors.fecha_nacimiento && (
-              <Text style={styles.errorText}>{errors.fecha_nacimiento}</Text>
-            )}
-            
-            {showDatePicker && (
-              <DateTimePicker
-                value={date}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={onDateChange}
-                maximumDate={new Date()}
-              />
+              placeholder="Edad * "
+              placeholderTextColor="#9ca3af"
+              keyboardType="numeric"
+              value={form.edad}
+              onChangeText={(value) => handleChange('edad', value)}
+              onBlur={() => handleBlur('edad')}
+              maxLength={3}
+            />
+            {touched.edad && errors.edad && (
+              <Text style={styles.errorText}>{errors.edad}</Text>
             )}
           </View>
 
@@ -638,27 +586,10 @@ const styles = {
     borderWidth: 1,
     borderColor: '#3a3a3a',
   },
-  // NUEVO estilo para texto de ayuda
-  helpText: {
-    color: '#9ca3af',
-    fontSize: 12,
-    marginTop: 5,
-    marginBottom: 5,
-    fontStyle: 'italic',
-  },
-  dateInput: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   sexInput: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  dateText: {
-    color: 'white',
-    fontSize: 16,
   },
   sexText: {
     color: 'white',
@@ -668,9 +599,12 @@ const styles = {
     color: '#9ca3af',
     fontSize: 16,
   },
-  calendarIcon: {
-    fontSize: 18,
+  helpText: {
     color: '#9ca3af',
+    fontSize: 12,
+    marginTop: 5,
+    marginBottom: 5,
+    fontStyle: 'italic',
   },
   dropdownIcon: {
     fontSize: 12,
@@ -680,7 +614,7 @@ const styles = {
     borderColor: '#ff4444',
   },
   inputSuccess: {
-    borderColor: '#d8bb18ff',
+    borderColor: '#fcde7cff',
   },
   errorText: {
     color: '#ff4444',
