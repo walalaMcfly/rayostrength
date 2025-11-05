@@ -11,6 +11,7 @@ class EnvironmentConfig {
     this.validateConfig();
   }
 
+  
   validateConfig() {
     const missing = this.requiredVariables.filter(varName => !this.get(varName));
     
@@ -40,3 +41,32 @@ class EnvironmentConfig {
 }
 
 module.exports = new EnvironmentConfig();
+
+
+const getGoogleCredentials = () => {
+  // Si estamos en Railway (producción), usa las variables de entorno
+  if (process.env.GOOGLE_CREDENTIALS) {
+    try {
+      return JSON.parse(process.env.GOOGLE_CREDENTIALS);
+    } catch (error) {
+      throw new Error('Error parsing GOOGLE_CREDENTIALS environment variable');
+    }
+  } else {
+    // Si estamos en desarrollo, usa el archivo local
+    try {
+      return require('./config/credentials.json');
+    } catch (error) {
+      throw new Error('Google credentials not found in development');
+    }
+  }
+};
+
+const getSheetId = () => {
+  // Usa la variable de entorno si existe, sino una por defecto (para desarrollo)
+  return process.env.GOOGLE_SHEET_ID || 'tu_sheet_id_por_defecto';
+};
+
+module.exports = {
+  getGoogleCredentials,
+  getSheetId
+};

@@ -1,6 +1,28 @@
 const { google } = require('googleapis');
 const envConfig = require('./environment.js');
 
+
+class GoogleSheetsService {
+  constructor() {
+    try {
+      this.auth = new google.auth.GoogleAuth({
+        credentials: envConfig.getGoogleCredentials(),
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      });
+      
+      this.sheets = google.sheets({ version: 'v4', auth: this.auth });
+      this.spreadsheetId = envConfig.getSheetId();
+      
+      console.log('✅ Google Sheets service initialized successfully');
+    } catch (error) {
+      console.error('❌ Failed to initialize Google Sheets service:', error.message);
+      throw error;
+    }
+  }
+
+
+}
+
 class GoogleSheetsService {
   constructor() {
     try {
@@ -69,7 +91,7 @@ class GoogleSheetsService {
     }
   }
 
-  // Nuevo método: Buscar fila por criterio
+ 
   async findRow(sheetName, columnIndex, value) {
     try {
       const data = await this.readSheet(sheetName);
@@ -116,7 +138,6 @@ async getRutinasSemana(semana) {
 
 async updateRutina(semana, ejercicioId, updates) {
   try {
-    // Encontrar la fila del ejercicio
     const data = await this.readSheet(semana);
     const rowIndex = this.findRutinaRow(data, ejercicioId);
     
@@ -124,7 +145,6 @@ async updateRutina(semana, ejercicioId, updates) {
       throw new Error(`Ejercicio ${ejercicioId} no encontrado`);
     }
     
-    // Actualizar la fila
     await this.updateRow(semana, rowIndex, updates);
     return true;
   } catch (error) {
@@ -134,7 +154,6 @@ async updateRutina(semana, ejercicioId, updates) {
 }
 
 findRutinaRow(data, ejercicioId) {
-  // Buscar por ID o por nombre
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === ejercicioId || data[i][1] === ejercicioId) {
       return i;
@@ -146,3 +165,4 @@ findRutinaRow(data, ejercicioId) {
 }
 
 module.exports = new GoogleSheetsService();
+

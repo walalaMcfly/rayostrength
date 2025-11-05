@@ -115,7 +115,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// LOGIN DE USUARIO (actualizado para usar edad)
+// LOGIN DE USUARIO 
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, contraseña } = req.body;
@@ -191,7 +191,7 @@ app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
     const { semana } = req.params;
     const data = await googleSheets.readSheet(semana);
     
-    // Transformar datos de Google Sheets al formato que espera tu frontend
+    
     const rutinas = transformSheetDataToRutinas(data);
     
     res.json({
@@ -267,7 +267,6 @@ function transformSheetDataToRutinas(sheetData) {
   return rows.map((row, index) => {
     const rutina = {};
     headers.forEach((header, i) => {
-      // Convertir nombres de columns de Sheets a propiedades del frontend
       switch(header.toLowerCase()) {
         case 'nombre': rutina.nombre = row[i]; break;
         case 'videourl': rutina.videoUrl = row[i]; break;
