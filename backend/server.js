@@ -183,6 +183,108 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+const googleSheets = require('./googleSheets');
+
+// OBTENER RUTINAS DE LA SEMANA
+app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
+  try {
+    const { semana } = req.params;
+    const data = await googleSheets.readSheet(semana);
+    
+    // Transformar datos de Google Sheets al formato que espera tu frontend
+    const rutinas = transformSheetDataToRutinas(data);
+    
+    res.json({
+      success: true,
+      rutinas: rutinas
+    });
+    
+  } catch (error) {
+    console.error('Error obteniendo rutinas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener las rutinas'
+    });
+  }
+});
+
+// MARCAR EJERCICIO COMPLETADO
+app.post('/api/rutinas/completar', authenticateToken, async (req, res) => {
+  try {
+    const { semana, ejercicioId, setsCompletados } = req.body;
+    
+    await googleSheets.updateRow(semana, ejercicioId, {
+      setsCompletados: JSON.stringify(setsCompletados),
+      fechaCompletado: new Date().toISOString(),
+      usuarioId: req.user.userId
+    });
+    
+    res.json({
+      success: true,
+      message: 'Ejercicio marcado como completado'
+    });
+    
+  } catch (error) {
+    console.error('Error marcando ejercicio:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al actualizar el ejercicio'
+    });
+  }
+});
+
+// GUARDAR NOTAS DEL CLIENTE
+app.post('/api/rutinas/notas', authenticateToken, async (req, res) => {
+  try {
+    const { semana, ejercicioId, notasCliente } = req.body;
+    
+    await googleSheets.updateRow(semana, ejercicioId, {
+      notasCliente: notasCliente,
+      usuarioId: req.user.userId
+    });
+    
+    res.json({
+      success: true,
+      message: 'Notas guardadas correctamente'
+    });
+    
+  } catch (error) {
+    console.error('Error guardando notas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al guardar las notas'
+    });
+  }
+});
+
+
+function transformSheetDataToRutinas(sheetData) {
+  if (!sheetData || sheetData.length < 2) return [];
+  
+  const headers = sheetData[0]; 
+  const rows = sheetData.slice(1); 
+  
+  return rows.map((row, index) => {
+    const rutina = {};
+    headers.forEach((header, i) => {
+      // Convertir nombres de columns de Sheets a propiedades del frontend
+      switch(header.toLowerCase()) {
+        case 'nombre': rutina.nombre = row[i]; break;
+        case 'videourl': rutina.videoUrl = row[i]; break;
+        case 'series': rutina.series = parseInt(row[i]) || 0; break;
+        case 'reps': rutina.reps = row[i]; break;
+        case 'tempo': rutina.tempo = row[i]; break;
+        case 'rir': rutina.rir = parseInt(row[i]) || 0; break;
+        case 'rpe': rutina.rpe = parseInt(row[i]) || 0; break;
+        case 'peso': rutina.peso = row[i]; break;
+        case 'notacoach': rutina.notaCoach = row[i]; break;
+      }
+    });
+    rutina.id = `ej-${index + 1}`;
+    return rutina;
+  });
+}
+
 // PERFIL DEL USUARIO - OBTENER
 app.get('/api/user/profile', authenticateToken, async (req, res) => {
   try {
@@ -256,7 +358,7 @@ app.put('/api/user/profile', authenticateToken, async (req, res) => {
   }
 });
 
-// REGISTRO DE COACH (actualizado para usar edad)
+
 app.post('/api/auth/register-coach', async (req, res) => {
   try {
     const { nombre, apellido, email, contraseña, edad, sexo, especialidad, experiencia } = req.body;
@@ -315,6 +417,26 @@ app.post('/api/auth/register-coach', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor'
+    });
+  }
+});
+
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbStatus = await testConnection();
+    const sheetsHealth = await googleSheets.healthCheck();
+    
+    res.json({
+      message: '🚀 ¡Backend funcionando!',
+      database: dbStatus ? 'Conectado' : 'Desconectado',
+      google_sheets: sheetsHealth,
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development'
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: '⚠️ Backend con problemas',
+      error: error.message
     });
   }
 });
