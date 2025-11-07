@@ -1,0 +1,23 @@
+# CREDENCIALES - NUNCA SUBIR A GITHUB
+config/
+credentials.json
+.env
+.env.local
+
+# NODE.JS
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# SISTEMA
+.DS_Store
+Thumbs.db
+
+# LOGS
+logs/
+*.log
+
+# IDEs
+.vscode/
+.idea/
