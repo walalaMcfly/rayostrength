@@ -24,6 +24,7 @@ export default function RutinasScreen() {
   const [semanaActual] = useState("Semana1"); 
 
  
+  
   useEffect(() => {
     cargarRutinas();
   }, []);
@@ -32,7 +33,7 @@ export default function RutinasScreen() {
     try {
       setLoading(true);
   
-      const response = await fetch(`rayostrength-production.up.railway.app/api/rutinas/Rayostrenght`, {
+      const response = await fetch(`${rayostrength-production.up.railway.app}/api/rutinas/Rayostrenght`, {
         headers: {
           'Authorization': `Bearer ${"https://oauth2.googleapis.com/token"}`, // Tu token de autenticación
           'Content-Type': 'application/json',
@@ -52,6 +53,42 @@ export default function RutinasScreen() {
     } finally {
       setLoading(false);
     }
+
+      try {
+    const url = `${rayostrength-production.up.railway.app}/api/rutinas/Rayostrenght`;
+    console.log('🔗 URL completa:', url);
+    console.log('🔑 Token:', userToken ? 'PRESENTE' : 'FALTANTE');
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${"https://oauth2.googleapis.com/token"}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 10000, // 10 segundos máximo
+    });
+
+    console.log('📡 Status de respuesta:', response.status);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ Datos recibidos:', result);
+    
+    if (result.success) {
+      setRutinas(result.rutinas);
+    } else {
+      Alert.alert('Error', result.message);
+    }
+  } catch (error) {
+    console.error('❌ Error completo:', error);
+    console.log('Tipo de error:', error.name);
+    console.log('Mensaje:', error.message);
+    
+    Alert.alert('Error de conexión', 'No se pudo conectar al servidor');
+  }
   };
 
   const toggleSet = async (ejercicioId, setNumber) => {
@@ -86,7 +123,7 @@ export default function RutinasScreen() {
 
     // Guardar en Google Sheets
     try {
-      await fetch('rayostrength-production.up.railway.app', {
+      await fetch('${rayostrength-production.up.railway.app}/api/rutinas/Rayostrenght`', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${"https://oauth2.googleapis.com/token"}`,
