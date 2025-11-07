@@ -184,6 +184,40 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 const googleSheets = require('./config/googleSheets');
+// Endpoint público para probar Google Sheets (sin autenticación)
+app.get('/api/test-rutinas/:semana', async (req, res) => {
+  try {
+    const { semana } = req.params;
+    console.log(`🔍 Solicitando rutinas para: ${semana} (test público)`);
+    
+    const data = await googleSheets.readSheet(semana);
+    console.log(`📊 Datos crudos de Google Sheets:`, data);
+    
+    if (!data || data.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No se encontraron datos en la hoja'
+      });
+    }
+    
+    const rutinas = transformSheetDataToRutinas(data);
+    console.log(`✅ Rutinas transformadas:`, rutinas);
+    
+    res.json({
+      success: true,
+      rutinas: rutinas
+    });
+    
+  } catch (error) {
+    console.error('❌ Error detallado obteniendo rutinas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener las rutinas',
+      error: error.message,
+      sheet: req.params.semana
+    });
+  }
+});
 
 // OBTENER RUTINAS DE LA SEMANA
 app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
