@@ -1,28 +1,6 @@
 const { google } = require('googleapis');
 const envConfig = require('./environment.js');
 
-
-class GoogleSheetsService {
-  constructor() {
-    try {
-      this.auth = new google.auth.GoogleAuth({
-        credentials: envConfig.getGoogleCredentials(),
-        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-      });
-      
-      this.sheets = google.sheets({ version: 'v4', auth: this.auth });
-      this.spreadsheetId = envConfig.getSheetId();
-      
-      console.log('✅ Google Sheets service initialized successfully');
-    } catch (error) {
-      console.error('❌ Failed to initialize Google Sheets service:', error.message);
-      throw error;
-    }
-  }
-
-
-}
-
 class GoogleSheetsService {
   constructor() {
     try {
@@ -91,7 +69,6 @@ class GoogleSheetsService {
     }
   }
 
- 
   async findRow(sheetName, columnIndex, value) {
     try {
       const data = await this.readSheet(sheetName);
@@ -102,7 +79,6 @@ class GoogleSheetsService {
     }
   }
 
- 
   async updateRow(sheetName, rowIndex, newData) {
     try {
       const response = await this.sheets.spreadsheets.values.update({
@@ -124,45 +100,41 @@ class GoogleSheetsService {
     return `RS_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-
-
-async getRutinasSemana(semana) {
-  try {
-    const data = await this.readSheet(semana);
-    return data;
-  } catch (error) {
-    console.error(`Error obteniendo rutinas de ${semana}:`, error);
-    throw error;
-  }
-}
-
-async updateRutina(semana, ejercicioId, updates) {
-  try {
-    const data = await this.readSheet(semana);
-    const rowIndex = this.findRutinaRow(data, ejercicioId);
-    
-    if (rowIndex === -1) {
-      throw new Error(`Ejercicio ${ejercicioId} no encontrado`);
-    }
-    
-    await this.updateRow(semana, rowIndex, updates);
-    return true;
-  } catch (error) {
-    console.error(`Error actualizando rutina:`, error);
-    throw error;
-  }
-}
-
-findRutinaRow(data, ejercicioId) {
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === ejercicioId || data[i][1] === ejercicioId) {
-      return i;
+  async getRutinasSemana(semana) {
+    try {
+      const data = await this.readSheet(semana);
+      return data;
+    } catch (error) {
+      console.error(`Error obteniendo rutinas de ${semana}:`, error);
+      throw error;
     }
   }
-  return -1;
-}
 
+  async updateRutina(semana, ejercicioId, updates) {
+    try {
+      const data = await this.readSheet(semana);
+      const rowIndex = this.findRutinaRow(data, ejercicioId);
+      
+      if (rowIndex === -1) {
+        throw new Error(`Ejercicio ${ejercicioId} no encontrado`);
+      }
+      
+      await this.updateRow(semana, rowIndex, updates);
+      return true;
+    } catch (error) {
+      console.error(`Error actualizando rutina:`, error);
+      throw error;
+    }
+  }
+
+  findRutinaRow(data, ejercicioId) {
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === ejercicioId || data[i][1] === ejercicioId) {
+        return i;
+      }
+    }
+    return -1;
+  }
 }
 
 module.exports = new GoogleSheetsService();
-
