@@ -183,7 +183,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-const googleSheets = require('./googleSheets');
+const googleSheets = require('./config/googleSheets');
 
 // OBTENER RUTINAS DE LA SEMANA
 app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
