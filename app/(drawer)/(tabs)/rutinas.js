@@ -32,7 +32,7 @@ export default function RutinasScreen() {
     try {
       setLoading(true);
   
-      const response = await fetch(`rayostrength-production.up.railway.app${semanaActual}`, {
+      const response = await fetch(`rayostrength-production.up.railway.app/api/rutinas/Rayostrenght`, {
         headers: {
           'Authorization': `Bearer ${"https://oauth2.googleapis.com/token"}`, // Tu token de autenticación
           'Content-Type': 'application/json',
