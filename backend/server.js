@@ -183,8 +183,40 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+app.get('/api/debug/rutinas/:semana', async (req, res) => {
+  try {
+    const { semana } = req.params;
+    console.log(`🔍 [DEBUG] Solicitando rutinas para: ${semana}`);
+    console.log(`🔍 [DEBUG] Probando Google Sheets service...`);
+    const health = await googleSheets.healthCheck();
+    console.log(`🔍 [DEBUG] Health check:`, health);
+    console.log(`🔍 [DEBUG] Leyendo hoja: ${semana}`);
+    const data = await googleSheets.readSheet(semana);
+    console.log(`🔍 [DEBUG] Datos crudos:`, data);
+    console.log(`🔍 [DEBUG] Transformando datos...`);
+    const rutinas = transformSheetDataToRutinas(data);
+    console.log(`🔍 [DEBUG] Rutinas transformadas:`, rutinas);
+
+    res.json({
+      success: true,
+      message: '✅ DEBUG - Todo funciona correctamente',
+      health: health,
+      data_raw: data,
+      rutinas: rutinas
+    });
+    
+  } catch (error) {
+    console.error('❌ [DEBUG] Error completo:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error en debug',
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 const googleSheets = require('./config/googleSheets');
-// Endpoint público para probar Google Sheets (sin autenticación)
 app.get('/api/test-rutinas/:semana', async (req, res) => {
   try {
     const { semana } = req.params;

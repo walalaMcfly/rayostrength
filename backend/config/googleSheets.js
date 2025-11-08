@@ -31,53 +31,40 @@ class GoogleSheetsService {
   }
 
   async readSheet(sheetName) {
-    try {
-      console.log(`📖 Reading sheet: ${sheetName}`);
-      
-      const response = await this.sheets.spreadsheets.values.get({
-        spreadsheetId: this.spreadsheetId,
-        range: `${sheetName}!A:Z`,
-      });
-      
-      const data = response.data.values || [];
-      console.log(`✅ Read ${data.length} rows from ${sheetName}`);
-      
-      return data;
-    } catch (error) {
-      console.error(`❌ Error reading sheet ${sheetName}:`, error.message);
-      throw new Error(`Failed to read ${sheetName}: ${error.message}`);
-    }
-  }
+  try {
+    console.log(`📖 Reading sheet: ${sheetName}`);
+    
+    const response = await this.sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: `${sheetName}!A:Z`,
+    });
+    
+    let data = response.data.values || [];
+    console.log(`✅ Read ${data.length} rows from ${sheetName}`);
 
-  async appendRow(sheetName, rowData) {
-    try {
-      console.log(`📝 Appending row to ${sheetName}:`, rowData);
-      
-      const response = await this.sheets.spreadsheets.values.append({
-        spreadsheetId: this.spreadsheetId,
-        range: `${sheetName}!A:Z`,
-        valueInputOption: 'USER_ENTERED',
-        insertDataOption: 'INSERT_ROWS',
-        resource: { values: [rowData] },
-      });
-      
-      console.log(`✅ Row appended to ${sheetName}`);
-      return response.data;
-    } catch (error) {
-      console.error(`❌ Error appending to ${sheetName}:`, error.message);
-      throw new Error(`Failed to append to ${sheetName}: ${error.message}`);
-    }
-  }
+    // ✅ FILTRAR FILAS VACÍAS Y ENCONTRAR DONDE EMPIEZAN LOS DATOS
+    if (data.length > 0) {
+      // Buscar la fila que tiene los encabezados (asumiendo que está en la fila 3)
+      let startRow = 0;
+      for (let i = 0; i < data.length; i++) {
+        if (data[i] && data[i].length > 0 && data[i][0]) {
+          // Si encontramos una fila con datos en la primera columna, asumimos que son los encabezados
+          startRow = i;
+          break;
+        }
+      }
 
-  async findRow(sheetName, columnIndex, value) {
-    try {
-      const data = await this.readSheet(sheetName);
-      return data.findIndex(row => row[columnIndex] === value);
-    } catch (error) {
-      console.error(`❌ Error finding row in ${sheetName}:`, error.message);
-      throw error;
+      console.log(`📊 Datos empiezan en fila: ${startRow + 1}`);
+      data = data.slice(startRow); // Cortar desde la fila donde empiezan los datos
     }
+
+    console.log(`📊 Datos después de filtrar: ${data.length} filas`);
+    return data;
+  } catch (error) {
+    console.error(`❌ Error reading sheet ${sheetName}:`, error.message);
+    throw new Error(`Failed to read ${sheetName}: ${error.message}`);
   }
+}
 
   async updateRow(sheetName, rowIndex, newData) {
     try {

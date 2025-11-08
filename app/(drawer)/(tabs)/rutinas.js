@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -15,80 +16,85 @@ import {
 import { colors } from "../../../constants/theme";
 
 
+const BASE_URL = 'https://rayostrength-production.up.railway.app';
+
 export default function RutinasScreen() {
   const router = useRouter();
   const [notasCliente, setNotasCliente] = useState({});
   const [setsCompletados, setSetsCompletados] = useState({});
   const [rutinas, setRutinas] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [semanaActual] = useState("Semana1"); 
+  const [userToken, setUserToken] = useState('');
 
- 
   
   useEffect(() => {
-    cargarRutinas();
+    const obtenerToken = async () => {
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+        console.log('🔑 Token obtenido:', token ? '✅' : '❌ No encontrado');
+        setUserToken(token);
+      } catch (error) {
+        console.error('Error obteniendo token:', error);
+        Alert.alert('Error', 'No se pudo obtener la sesión');
+      }
+    };
+
+    obtenerToken();
   }, []);
+
+  
+  useEffect(() => {
+    if (userToken) {
+      cargarRutinas();
+    }
+  }, [userToken]);
 
   const cargarRutinas = async () => {
     try {
       setLoading(true);
-  
-      const response = await fetch(`${rayostrength-production.up.railway.app}/api/rutinas/Rayostrenght`, {
+      console.log('🔗 Iniciando carga de rutinas...');
+
+     
+      const response = await fetch(`${BASE_URL}/api/rutinas/Rayostrenght`, {
+        method: 'GET',
         headers: {
-          'Authorization': `Bearer ${"https://oauth2.googleapis.com/token"}`, // Tu token de autenticación
+          'Authorization': `Bearer ${userToken}`, // ✅ TOKEN REAL
           'Content-Type': 'application/json',
         },
       });
-      
+
+      console.log('📡 Status:', response.status);
+
+      if (response.status === 401) {
+        throw new Error('Token inválido o expirado');
+      }
+
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status}`);
+      }
+
       const result = await response.json();
-      
+      console.log('✅ Datos recibidos:', result);
+
       if (result.success) {
         setRutinas(result.rutinas);
       } else {
-        Alert.alert('Error', 'No se pudieron cargar las rutinas');
+        Alert.alert('Error', result.message || 'Error al cargar rutinas');
       }
     } catch (error) {
-      console.error('Error cargando rutinas:', error);
-      Alert.alert('Error', 'Error de conexión');
+      console.error('❌ Error cargando rutinas:', error);
+      
+      if (error.message.includes('Token') || error.message.includes('401')) {
+        Alert.alert('Sesión expirada', 'Por favor inicia sesión nuevamente');
+        // Limpiar token y redirigir al login
+        await AsyncStorage.removeItem('userToken');
+        router.replace('/');
+      } else {
+        Alert.alert('Error', 'No se pudieron cargar las rutinas: ' + error.message);
+      }
     } finally {
       setLoading(false);
     }
-
-      try {
-    const url = `${rayostrength-production.up.railway.app}/api/rutinas/Rayostrenght`;
-    console.log('🔗 URL completa:', url);
-    console.log('🔑 Token:', userToken ? 'PRESENTE' : 'FALTANTE');
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${"https://oauth2.googleapis.com/token"}`,
-        'Content-Type': 'application/json',
-      },
-      timeout: 10000, // 10 segundos máximo
-    });
-
-    console.log('📡 Status de respuesta:', response.status);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result = await response.json();
-    console.log('✅ Datos recibidos:', result);
-    
-    if (result.success) {
-      setRutinas(result.rutinas);
-    } else {
-      Alert.alert('Error', result.message);
-    }
-  } catch (error) {
-    console.error('❌ Error completo:', error);
-    console.log('Tipo de error:', error.name);
-    console.log('Mensaje:', error.message);
-    
-    Alert.alert('Error de conexión', 'No se pudo conectar al servidor');
-  }
   };
 
   const toggleSet = async (ejercicioId, setNumber) => {
@@ -98,16 +104,15 @@ export default function RutinasScreen() {
     nuevosSets[ejercicioId][setNumber] = !nuevosSets[ejercicioId]?.[setNumber];
     setSetsCompletados(nuevosSets);
 
-    // Guardar en Google Sheets
     try {
-      await fetch('rayostrength-production.up.railway.app', {
+      await fetch(`${BASE_URL}/api/rutinas/completar`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${"https://oauth2.googleapis.com/token"}`,
+          'Authorization': `Bearer ${userToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          semana: semanaActual,
+          semana: 'Rayostrenght',
           ejercicioId: ejercicioId,
           setsCompletados: nuevosSets[ejercicioId]
         }),
@@ -121,16 +126,16 @@ export default function RutinasScreen() {
     const nuevasNotas = { ...notasCliente, [ejercicioId]: texto };
     setNotasCliente(nuevasNotas);
 
-    // Guardar en Google Sheets
+    
     try {
-      await fetch('${rayostrength-production.up.railway.app}/api/rutinas/Rayostrenght`', {
+      await fetch(`${BASE_URL}/api/rutinas/notas`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${"https://oauth2.googleapis.com/token"}`,
+          'Authorization': `Bearer ${userToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          semana: semanaActual,
+          semana: 'Rayostrenght',
           ejercicioId: ejercicioId,
           notasCliente: texto
         }),
@@ -219,7 +224,6 @@ export default function RutinasScreen() {
   );
 }
 
-// Agregar estos estilos
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -282,7 +286,6 @@ const styles = StyleSheet.create({
     minHeight: 40,
     color: colors.text,
   },
-  
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
