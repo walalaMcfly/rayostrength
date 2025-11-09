@@ -25,6 +25,7 @@ export default function RutinasScreen() {
   const [rutinas, setRutinas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userToken, setUserToken] = useState('');
+  const [refreshing, setRefreshing] = useState(false); 
 
   
   useEffect(() => {
@@ -86,7 +87,6 @@ export default function RutinasScreen() {
       
       if (error.message.includes('Token') || error.message.includes('401')) {
         Alert.alert('Sesión expirada', 'Por favor inicia sesión nuevamente');
-        // Limpiar token y redirigir al login
         await AsyncStorage.removeItem('userToken');
         router.replace('/');
       } else {
@@ -95,6 +95,13 @@ export default function RutinasScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await cargarRutinas();
+    setRefreshing(false);
   };
 
   const toggleSet = async (ejercicioId, setNumber) => {
@@ -219,6 +226,8 @@ export default function RutinasScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={{ paddingBottom: 24 }}
+        refreshing={refreshing} 
+        onRefresh={onRefresh} 
       />
     </View>
   );
