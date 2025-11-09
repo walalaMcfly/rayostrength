@@ -59,10 +59,7 @@ export default function Login() {
         await AsyncStorage.setItem('userToken', data.token);
         console.log('✅ Token guardado exitosamente en AsyncStorage');
         console.log('✅ Token:', data.token.substring(0, 20) + '...');
-  
-        Alert.alert("¡Éxito!", "Login exitoso");
         router.replace('/(drawer)/(tabs)/rutinas'); 
-        Alert.alert("Error", data.message || "Error en el login");
       }
     } catch (error) {
       console.error('❌ Error completo en login:', error);
