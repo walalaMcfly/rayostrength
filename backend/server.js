@@ -350,6 +350,91 @@ function transformSheetDataToRutinas(sheetData) {
   });
 }
 
+
+// WELLNESS - Registrar encuesta diaria
+app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
+  try {
+    const { fecha, respuestas } = req.body;
+    const userId = req.user.userId;
+
+    // Verificar si ya existe registro para hoy
+    const [existing] = await pool.execute(
+      'SELECT id_wellness FROM Wellness WHERE id_usuario = ? AND fecha = ?',
+      [userId, fecha]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ya completaste la encuesta wellness para hoy'
+      });
+    }
+
+    // Insertar nuevo registro
+    await pool.execute(
+      `INSERT INTO Wellness (id_usuario, fecha, energia, sueno, estres, dolor_muscular, motivacion, notas) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        userId, 
+        fecha,
+        respuestas.energia,
+        respuestas.sueno, 
+        respuestas.estres,
+        respuestas.dolor,
+        respuestas.motivacion,
+        JSON.stringify(respuestas)
+      ]
+    );
+
+    res.json({
+      success: true,
+      message: 'Encuesta wellness guardada correctamente'
+    });
+
+  } catch (error) {
+    console.error('Error guardando wellness:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al guardar la encuesta wellness'
+    });
+  }
+});
+
+// PROGRESO - Obtener resumen del usuario
+app.get('/api/progreso/resumen', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // Aquí implementarías la lógica para calcular:
+    // - Rutinas completadas vs totales
+    // - Promedio RIR/RPE
+    // - Volumen de entrenamiento
+    // - Progreso semanal
+
+    const resumen = {
+      rutinasCompletadas: 12,
+      totalRutinas: 20,
+      porcentajeCompletitud: 60,
+      mejorRPE: 8,
+      promedioRIR: 2.5,
+      volumenSemanal: 45,
+      wellnessPromedio: 7.2
+    };
+
+    res.json({
+      success: true,
+      resumen: resumen
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo progreso:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener el progreso'
+    });
+  }
+});
+
 // PERFIL DEL USUARIO - OBTENER
 app.get('/api/user/profile', authenticateToken, async (req, res) => {
   try {

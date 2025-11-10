@@ -1,156 +1,466 @@
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Dimensions,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
-import { BarChart, PieChart } from "react-native-chart-kit";
+import { BarChart, LineChart } from "react-native-chart-kit";
 import { colors } from "../../../constants/theme";
 
 const screenWidth = Dimensions.get("window").width;
+const BASE_URL = 'https://rayostrength-production.up.railway.app';
 
-const wellnessQuestions = [
-  "¿Cómo estuvo tu sueño?",
-  "¿Cómo está tu energía?",
-  "¿Cómo está tu motivación?",
-  "¿Tienes dolores musculares?",
-  "¿Estrés general?",
-  "¿Cómo estuvo tu nutrición?",
-  "¿Cómo estuvo tu hidratación?",
-  "¿Cómo fue tu recuperación?",
-];
+export default function ProgresoScreen() {
+  const [activeTab, setActiveTab] = useState("resumen");
+  const [wellnessData, setWellnessData] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [progressData, setProgressData] = useState(null);
 
-export default function Progreso() {
-  const router = useRouter();
-  const [answers, setAnswers] = useState({});
-  const [feedback, setFeedback] = useState("");
+  // Datos de ejemplo (reemplazar con datos reales del backend)
+  const [estadisticas, setEstadisticas] = useState({
+    rutinasCompletadas: 12,
+    totalRutinas: 20,
+    porcentajeCompletitud: 60,
+    mejorRPE: 8,
+    promedioRIR: 2.5,
+    volumenSemanal: 45
+  });
 
-  const muscleGroups = [
-    { name: "Pecho", population: 20, color: "#ff7f50", legendFontColor: colors.text, legendFontSize: 14 },
-    { name: "Piernas", population: 35, color: "#87cefa", legendFontColor: colors.text, legendFontSize: 14 },
-    { name: "Espalda", population: 25, color: "#32cd32", legendFontColor: colors.text, legendFontSize: 14 },
-    { name: "Brazos", population: 20, color: "#9370db", legendFontColor: colors.text, legendFontSize: 14 },
+  const wellnessQuestions = [
+    { id: "sueno", pregunta: "💤 Calidad del sueño", escala: "1 (Malo) - 10 (Excelente)" },
+    { id: "energia", pregunta: "⚡ Nivel de energía", escala: "1 (Agotado) - 10 (Energético)" },
+    { id: "estres", pregunta: "😥 Nivel de estrés", escala: "1 (Tranquilo) - 10 (Muy estresado)" },
+    { id: "dolor", pregunta: "💪 Dolor muscular", escala: "1 (Sin dolor) - 10 (Dolor intenso)" },
+    { id: "motivacion", pregunta: "🎯 Motivación para entrenar", escala: "1 (Nada) - 10 (Muy motivado)" },
+    { id: "apetito", pregunta: "🍽️ Nivel de apetito", escala: "1 (Nada) - 10 (Muy hambriento)" }
   ];
 
-  const performance = {
-    labels: ["Semana 1", "Semana 2", "Semana 3", "Semana 4"],
-    datasets: [{ data: [70, 75, 80, 78] }],
+  useEffect(() => {
+    cargarDatosProgreso();
+  }, []);
+
+  const cargarDatosProgreso = async () => {
+    try {
+      setLoading(true);
+      // Aquí cargarás datos reales del backend
+      // Por ahora usamos datos de ejemplo
+      setProgressData({
+        rutinasSemanales: [3, 4, 5, 4, 6],
+        wellnessPromedio: [6, 7, 8, 7, 6, 8, 7],
+        progresoPesos: [60, 62, 65, 63, 68],
+        volumenEntrenamiento: [1200, 1350, 1420, 1380, 1500]
+      });
+    } catch (error) {
+      console.error('Error cargando progreso:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleAnswer = (index, value) => {
-    setAnswers((prev) => ({ ...prev, [index]: value }));
+  const handleWellnessChange = (preguntaId, valor) => {
+    setWellnessData(prev => ({
+      ...prev,
+      [preguntaId]: valor
+    }));
   };
+
+  const enviarWellness = async () => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      const respuestasCompletas = wellnessQuestions.every(q => wellnessData[q.id]);
+      
+      if (!respuestasCompletas) {
+        Alert.alert("Completa la encuesta", "Por favor responde todas las preguntas");
+        return;
+      }
+
+      const response = await fetch(`${BASE_URL}/api/wellness/registrar`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fecha: new Date().toISOString().split('T')[0],
+          respuestas: wellnessData
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        Alert.alert("✅ Encuesta guardada", "Tu estado wellness ha sido registrado");
+        setWellnessData({});
+      } else {
+        Alert.alert("Error", "No se pudo guardar la encuesta");
+      }
+    } catch (error) {
+      console.error('Error enviando wellness:', error);
+      Alert.alert("Error", "No se pudo conectar al servidor");
+    }
+  };
+
+  const renderResumen = () => (
+    <View style={styles.seccion}>
+      <Text style={styles.tituloSeccion}>📈 Resumen de Progreso</Text>
+      
+      <View style={styles.estadisticasGrid}>
+        <View style={styles.estadisticaCard}>
+          <Text style={styles.estadisticaNumero}>{estadisticas.rutinasCompletadas}/{estadisticas.totalRutinas}</Text>
+          <Text style={styles.estadisticaLabel}>Rutinas Completadas</Text>
+          <View style={styles.barraProgreso}>
+            <View 
+              style={[
+                styles.barraProgresoFill, 
+                {width: `${estadisticas.porcentajeCompletitud}%`}
+              ]} 
+            />
+          </View>
+        </View>
+
+        <View style={styles.estadisticaCard}>
+          <Text style={styles.estadisticaNumero}>{estadisticas.promedioRIR}</Text>
+          <Text style={styles.estadisticaLabel}>RIR Promedio</Text>
+        </View>
+
+        <View style={styles.estadisticaCard}>
+          <Text style={styles.estadisticaNumero}>{estadisticas.mejorRPE}/10</Text>
+          <Text style={styles.estadisticaLabel}>Mejor RPE</Text>
+        </View>
+
+        <View style={styles.estadisticaCard}>
+          <Text style={styles.estadisticaNumero}>{estadisticas.volumenSemanal}</Text>
+          <Text style={styles.estadisticaLabel}>Volumen Semanal</Text>
+        </View>
+      </View>
+
+      {/* Gráfico de progreso semanal */}
+      {progressData && (
+        <View style={styles.graficoContainer}>
+          <Text style={styles.subtitulo}>Rutinas Completadas por Semana</Text>
+          <BarChart
+            data={{
+              labels: ['S1', 'S2', 'S3', 'S4', 'S5'],
+              datasets: [{ data: progressData.rutinasSemanales }]
+            }}
+            width={screenWidth - 64}
+            height={200}
+            chartConfig={chartConfig}
+            style={styles.grafico}
+          />
+        </View>
+      )}
+    </View>
+  );
+
+  const renderWellness = () => (
+    <View style={styles.seccion}>
+      <Text style={styles.tituloSeccion}>🧘 Wellness Diario</Text>
+      <Text style={styles.descripcion}>
+        Evalúa cómo te sientes hoy. Esto ayuda a tu coach a ajustar tu entrenamiento.
+      </Text>
+
+      {wellnessQuestions.map((pregunta) => (
+        <View key={pregunta.id} style={styles.preguntaContainer}>
+          <Text style={styles.preguntaTexto}>{pregunta.pregunta}</Text>
+          <Text style={styles.escalaTexto}>{pregunta.escala}</Text>
+          
+          <View style={styles.escalaContainer}>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((numero) => (
+              <TouchableOpacity
+                key={numero}
+                style={[
+                  styles.botonEscala,
+                  wellnessData[pregunta.id] === numero && styles.botonEscalaSeleccionado
+                ]}
+                onPress={() => handleWellnessChange(pregunta.id, numero)}
+              >
+                <Text style={[
+                  styles.textoBotonEscala,
+                  wellnessData[pregunta.id] === numero && styles.textoBotonEscalaSeleccionado
+                ]}>
+                  {numero}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      ))}
+
+      <TouchableOpacity style={styles.botonEnviar} onPress={enviarWellness}>
+        <Text style={styles.textoBotonEnviar}>📤 Enviar Encuesta Wellness</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderEstadisticas = () => (
+    <View style={styles.seccion}>
+      <Text style={styles.tituloSeccion}>📊 Estadísticas Detalladas</Text>
+      
+      {progressData && (
+        <>
+          <View style={styles.graficoContainer}>
+            <Text style={styles.subtitulo}>Progreso de Wellness Semanal</Text>
+            <LineChart
+              data={{
+                labels: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
+                datasets: [{ data: progressData.wellnessPromedio }]
+              }}
+              width={screenWidth - 64}
+              height={200}
+              chartConfig={chartConfig}
+              bezier
+              style={styles.grafico}
+            />
+          </View>
+
+          <View style={styles.graficoContainer}>
+            <Text style={styles.subtitulo}>Volumen de Entrenamiento (kg)</Text>
+            <LineChart
+              data={{
+                labels: ['S1', 'S2', 'S3', 'S4', 'S5'],
+                datasets: [{ data: progressData.volumenEntrenamiento }]
+              }}
+              width={screenWidth - 64}
+              height={200}
+              chartConfig={chartConfig}
+              bezier
+              style={styles.grafico}
+            />
+          </View>
+        </>
+      )}
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.cargandoContainer}>
+        <ActivityIndicator size="large" color={colors.active} />
+        <Text style={styles.cargandoTexto}>Cargando tu progreso...</Text>
+      </View>
+    );
+  }
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Progreso</Text>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>📊 Resumen</Text>
-        <Text style={styles.subtitle}>Series por grupo muscular</Text>
-        <PieChart
-          data={muscleGroups}
-          width={screenWidth - 64}
-          height={220}
-          chartConfig={chartConfig}
-          accessor={"population"}
-          backgroundColor={"transparent"}
-          paddingLeft={"15"}
-          absolute
-        />
-        <Text style={styles.subtitle}>Índice de rendimiento</Text>
-        <BarChart
-          data={performance}
-          width={screenWidth - 64}
-          height={220}
-          chartConfig={chartConfig}
-          style={{ borderRadius: 16 }}
-          fromZero
-          showValuesOnTopOfBars
-        />
+    <View style={styles.container}>
+      {/* Navegación por pestañas */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === "resumen" && styles.tabActiva]}
+          onPress={() => setActiveTab("resumen")}
+        >
+          <Text style={[styles.tabTexto, activeTab === "resumen" && styles.tabTextoActivo]}>
+            📈 Resumen
+          </Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === "wellness" && styles.tabActiva]}
+          onPress={() => setActiveTab("wellness")}
+        >
+          <Text style={[styles.tabTexto, activeTab === "wellness" && styles.tabTextoActivo]}>
+            🧘 Wellness
+          </Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === "estadisticas" && styles.tabActiva]}
+          onPress={() => setActiveTab("estadisticas")}
+        >
+          <Text style={[styles.tabTexto, activeTab === "estadisticas" && styles.tabTextoActivo]}>
+            📊 Stats
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>🧘 Wellness</Text>
-        {wellnessQuestions.map((q, i) => (
-          <View key={i} style={styles.questionBlock}>
-            <Text style={styles.question}>{q}</Text>
-            <View style={styles.answerRow}>
-              {[1, 2, 3, 4, 5].map((val) => (
-                <TouchableOpacity
-                  key={val}
-                  style={[
-                    styles.answerButton,
-                    answers[i] === val && { backgroundColor: colors.active },
-                  ]}
-                  onPress={() => handleAnswer(i, val)}
-                >
-                  <Text style={answers[i] === val ? styles.answerTextActive : styles.answerText}>
-                    {val}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        ))}
-        <Text style={styles.subtitle}>Feedback libre</Text>
-        <TextInput
-          style={styles.feedbackBox}
-          placeholder="Escribe tus comentarios..."
-          placeholderTextColor={colors.placeholder}
-          multiline
-          value={feedback}
-          onChangeText={setFeedback}
-        />
-      </View>
-    </ScrollView>
+      <ScrollView style={styles.contenido}>
+        {activeTab === "resumen" && renderResumen()}
+        {activeTab === "wellness" && renderWellness()}
+        {activeTab === "estadisticas" && renderEstadisticas()}
+      </ScrollView>
+    </View>
   );
 }
 
 const chartConfig = {
+  backgroundColor: colors.card,
   backgroundGradientFrom: colors.card,
   backgroundGradientTo: colors.card,
   decimalPlaces: 0,
   color: (opacity = 1) => `rgba(255, 215, 0, ${opacity})`,
   labelColor: (opacity = 1) => colors.text,
+  style: { borderRadius: 16 },
+  propsForDots: { r: "4", strokeWidth: "2", stroke: colors.active }
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: colors.background },
-  title: { fontSize: 24, fontWeight: "bold", marginBottom: 20, color: colors.text },
-  card: {
+  container: { flex: 1, backgroundColor: colors.background },
+  cargandoContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    backgroundColor: colors.background 
+  },
+  cargandoTexto: { 
+    marginTop: 10, 
+    color: colors.text,
+    fontSize: 16 
+  },
+  tabsContainer: {
+    flexDirection: 'row',
     backgroundColor: colors.card,
+    margin: 16,
     borderRadius: 12,
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  tabActiva: {
+    backgroundColor: colors.active,
+  },
+  tabTexto: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tabTextoActivo: {
+    color: colors.card,
+    fontWeight: 'bold',
+  },
+  contenido: {
+    flex: 1,
+  },
+  seccion: {
     padding: 16,
+  },
+  tituloSeccion: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  descripcion: {
+    color: colors.text,
+    fontSize: 16,
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  estadisticasGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     marginBottom: 20,
   },
-  sectionTitle: { fontSize: 20, fontWeight: "700", marginBottom: 10, color: colors.accent },
-  subtitle: { fontSize: 16, fontWeight: "600", marginVertical: 12, color: colors.text },
-  questionBlock: { marginBottom: 16 },
-  question: { fontSize: 16, fontWeight: "600", marginBottom: 8, color: colors.text },
-  answerRow: { flexDirection: "row", justifyContent: "space-between" },
-  answerButton: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 6,
-    padding: 8,
-    width: 40,
-    alignItems: "center",
+  estadisticaCard: {
+    width: '48%',
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    alignItems: 'center',
   },
-  answerText: { color: colors.text },
-  answerTextActive: { color: colors.text, fontWeight: "bold" },
-  feedbackBox: {
+  estadisticaNumero: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.active,
+    marginBottom: 8,
+  },
+  estadisticaLabel: {
+    color: colors.text,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  barraProgreso: {
+    width: '100%',
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: 3,
+    marginTop: 8,
+  },
+  barraProgresoFill: {
+    height: '100%',
+    backgroundColor: colors.active,
+    borderRadius: 3,
+  },
+  graficoContainer: {
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  subtitulo: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  grafico: {
+    borderRadius: 16,
+  },
+  preguntaContainer: {
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  preguntaTexto: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  escalaTexto: {
+    color: colors.placeholder,
+    fontSize: 12,
+    marginBottom: 12,
+  },
+  escalaContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  botonEscala: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 10,
-    padding: 10,
-    height: 100,
-    textAlignVertical: "top",
+  },
+  botonEscalaSeleccionado: {
+    backgroundColor: colors.active,
+    borderColor: colors.active,
+  },
+  textoBotonEscala: {
     color: colors.text,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  textoBotonEscalaSeleccionado: {
+    color: colors.card,
+  },
+  botonEnviar: {
+    backgroundColor: colors.active,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  textoBotonEnviar: {
+    color: colors.card,
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
