@@ -401,6 +401,154 @@ app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
   }
 });
 
+// ✅ ENDPOINT PARA GUARDAR PROGRESO DE RUTINA
+app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) => {
+  try {
+    const { 
+      id_ejercicio, 
+      nombre_ejercicio, 
+      sets_completados, 
+      reps_logradas, 
+      peso_utilizado, 
+      rir_final, 
+      rpe_final, 
+      notas 
+    } = req.body;
+    
+    const userId = req.user.userId;
+
+    // Guardar en ProgresoRutinas
+    await pool.execute(
+      `INSERT INTO ProgresoRutinas 
+       (id_usuario, id_ejercicio, nombre_ejercicio, fecha, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas)
+       VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)`,
+      [userId, id_ejercicio, nombre_ejercicio, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas]
+    );
+
+    res.json({
+      success: true,
+      message: 'Progreso del ejercicio guardado correctamente'
+    });
+
+  } catch (error) {
+    console.error('Error guardando progreso de ejercicio:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al guardar el progreso'
+    });
+  }
+});
+
+// ✅ ENDPOINT PARA REGISTRAR SESIÓN COMPLETADA
+app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) => {
+  try {
+    const { 
+      semana_rutina, 
+      total_ejercicios, 
+      ejercicios_completados, 
+      duracion_total_minutos,
+      volumen_total,
+      rpe_promedio,
+      rir_promedio,
+      notas_usuario 
+    } = req.body;
+    
+    const userId = req.user.userId;
+
+    const porcentaje_completitud = (ejercicios_completados / total_ejercicios) * 100;
+
+    // Guardar en SesionesEntrenamiento
+    await pool.execute(
+      `INSERT INTO SesionesEntrenamiento 
+       (id_usuario, fecha, semana_rutina, total_ejercicios, ejercicios_completados, porcentaje_completitud, duracion_total_minutos, volumen_total, rpe_promedio, rir_promedio, notas_usuario, completada)
+       VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
+      [userId, semana_rutina, total_ejercicios, ejercicios_completados, porcentaje_completitud, duracion_total_minutos, volumen_total, rpe_promedio, rir_promedio, notas_usuario]
+    );
+
+    res.json({
+      success: true,
+      message: 'Sesión de entrenamiento registrada correctamente'
+    });
+
+  } catch (error) {
+    console.error('Error registrando sesión:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al registrar la sesión'
+    });
+  }
+});
+
+
+app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // Obtener sesiones de las últimas 5 semanas para el gráfico
+    const [sesionesSemanales] = await pool.execute(
+      `SELECT WEEK(fecha) as semana, COUNT(*) as cantidad
+       FROM SesionesEntrenamiento 
+       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 5 WEEK)
+       GROUP BY WEEK(fecha)
+       ORDER BY semana DESC
+       LIMIT 5`,
+      [userId]
+    );
+
+    // Obtener datos de wellness para gráfico
+    const [wellnessData] = await pool.execute(
+      `SELECT energia, sueno, estres, dolor_muscular, motivacion
+       FROM Wellness 
+       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+       ORDER BY fecha ASC
+       LIMIT 7`,
+      [userId]
+    );
+
+    // Obtener estadísticas generales
+    const [estadisticas] = await pool.execute(
+      `SELECT 
+        COUNT(*) as total_sesiones,
+        AVG(porcentaje_completitud) as porcentaje_promedio,
+        AVG(rpe_promedio) as rpe_promedio,
+        AVG(rir_promedio) as rir_promedio
+       FROM SesionesEntrenamiento 
+       WHERE id_usuario = ?`,
+      [userId]
+    );
+
+    // Formatear datos para frontend
+    const datosProgreso = {
+      rutinasSemanales: sesionesSemanales.map(s => s.cantidad).reverse(),
+      wellnessPromedio: wellnessData.map(w => (w.energia + w.sueno + w.motivacion) / 3),
+      progresoPesos: [60, 62, 65, 63, 68], // Por implementar con datos reales
+      volumenEntrenamiento: [1200, 1350, 1420, 1380, 1500] // Por implementar con datos reales
+    };
+
+    const datosEstadisticas = {
+      rutinasCompletadas: estadisticas[0]?.total_sesiones || 0,
+      totalRutinas: 20, // Esto podría venir de otra tabla
+      porcentajeCompletitud: estadisticas[0]?.porcentaje_promedio || 0,
+      mejorRPE: 8, // Por implementar con cálculo real
+      promedioRIR: estadisticas[0]?.rir_promedio || 0,
+      volumenSemanal: 45 // Por implementar con cálculo real
+    };
+
+    res.json({
+      success: true,
+      progressData: datosProgreso,
+      estadisticas: datosEstadisticas
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo datos de progreso:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener los datos de progreso'
+    });
+  }
+});
+
 // PROGRESO - Obtener resumen del usuario
 app.get('/api/progreso/resumen', authenticateToken, async (req, res) => {
   try {
@@ -625,6 +773,128 @@ app.put('/api/user/profile', authenticateToken, async (req, res) => {
   }
 });
 
+app.post('/api/progreso/ejercicio', authenticateToken, async (req, res) => {
+  try {
+    const { id_ejercicio, nombre_ejercicio, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas } = req.body;
+    const userId = req.user.userId;
+
+    // Insertar en ProgresoRutinas
+    await pool.execute(
+      `INSERT INTO ProgresoRutinas (id_usuario, id_ejercicio, nombre_ejercicio, fecha, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas)
+       VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)`,
+      [userId, id_ejercicio, nombre_ejercicio, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas]
+    );
+
+    res.json({
+      success: true,
+      message: 'Progreso del ejercicio guardado'
+    });
+
+  } catch (error) {
+    console.error('Error guardando progreso de ejercicio:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al guardar el progreso del ejercicio'
+    });
+  }
+});
+
+// Registrar sesión de entrenamiento
+app.post('/api/progreso/sesion', authenticateToken, async (req, res) => {
+  try {
+    const { semana_rutina, total_ejercicios, ejercicios_completados, duracion_total_minutos, volumen_total, rpe_promedio, rir_promedio, notas_usuario } = req.body;
+    const userId = req.user.userId;
+
+    const porcentaje_completitud = (ejercicios_completados / total_ejercicios) * 100;
+
+    // Insertar en SesionesEntrenamiento
+    await pool.execute(
+      `INSERT INTO SesionesEntrenamiento (id_usuario, fecha, semana_rutina, total_ejercicios, ejercicios_completados, porcentaje_completitud, duracion_total_minutos, volumen_total, rpe_promedio, rir_promedio, notas_usuario, completada)
+       VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [userId, semana_rutina, total_ejercicios, ejercicios_completados, porcentaje_completitud, duracion_total_minutos, volumen_total, rpe_promedio, rir_promedio, notas_usuario, true]
+    );
+
+    res.json({
+      success: true,
+      message: 'Sesión de entrenamiento registrada'
+    });
+
+  } catch (error) {
+    console.error('Error registrando sesión:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al registrar la sesión de entrenamiento'
+    });
+  }
+});
+
+// Obtener resumen de progreso para el usuario
+app.get('/api/progreso/resumen', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // Obtener estadísticas de sesiones
+    const [sesiones] = await pool.execute(
+      `SELECT COUNT(*) as total_sesiones, 
+              AVG(porcentaje_completitud) as avg_completitud,
+              AVG(rpe_promedio) as avg_rpe,
+              AVG(rir_promedio) as avg_rir
+       FROM SesionesEntrenamiento 
+       WHERE id_usuario = ?`,
+      [userId]
+    );
+
+    // Obtener sesiones de la última semana para gráfico
+    const [sesionesSemanales] = await pool.execute(
+      `SELECT DATE_FORMAT(fecha, '%Y-%u') as semana, COUNT(*) as cantidad
+       FROM SesionesEntrenamiento 
+       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 4 WEEK)
+       GROUP BY semana
+       ORDER BY semana DESC
+       LIMIT 5`,
+      [userId]
+    );
+
+    // Obtener datos de wellness para gráfico
+    const [wellnessData] = await pool.execute(
+      `SELECT AVG(energia) as energia, AVG(sueno) as sueno, AVG(estres) as estres, AVG(dolor_muscular) as dolor, AVG(motivacion) as motivacion
+       FROM Wellness 
+       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+       GROUP BY fecha
+       ORDER BY fecha DESC
+       LIMIT 7`,
+      [userId]
+    );
+
+    // Formatear datos para gráficos
+    const rutinasSemanales = sesionesSemanales.map(s => s.cantidad).reverse();
+    const wellnessPromedio = wellnessData.map(w => (w.energia + w.sueno + w.motivacion) / 3).reverse();
+
+    res.json({
+      success: true,
+      resumen: {
+        rutinasCompletadas: sesiones[0].total_sesiones,
+        totalRutinas: 20, // Este valor podría venir de otra parte
+        porcentajeCompletitud: sesiones[0].avg_completitud || 0,
+        mejorRPE: 8, // Podrías calcularlo
+        promedioRIR: sesiones[0].avg_rir || 0,
+        volumenSemanal: 45 // Podrías calcularlo
+      },
+      progressData: {
+        rutinasSemanales,
+        wellnessPromedio,
+        // Agregar más datos según necesites
+      }
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo resumen de progreso:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener el resumen de progreso'
+    });
+  }
+});
 
 app.post('/api/auth/register-coach', async (req, res) => {
   try {

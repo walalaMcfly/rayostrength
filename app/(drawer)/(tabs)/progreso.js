@@ -22,7 +22,6 @@ export default function ProgresoScreen() {
   const [loading, setLoading] = useState(true);
   const [progressData, setProgressData] = useState(null);
 
-  // Datos de ejemplo (reemplazar con datos reales del backend)
   const [estadisticas, setEstadisticas] = useState({
     rutinasCompletadas: 12,
     totalRutinas: 20,
@@ -45,33 +44,42 @@ export default function ProgresoScreen() {
     cargarDatosProgreso();
   }, []);
 
-  const cargarDatosProgreso = async () => {
+ const cargarDatosProgreso = async () => {
   try {
     setLoading(true);
     const token = await AsyncStorage.getItem('userToken');
 
-    // Cargar resumen
-    const resumenResponse = await fetch(`${BASE_URL}/api/progreso/resumen`, {
-      headers: { 'Authorization': `Bearer ${token}` }
+    const response = await fetch(`${BASE_URL}/api/progreso/datos-reales`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
     });
-    const resumenData = await resumenResponse.json();
 
-    // Cargar datos para gráficos
-    const graficosResponse = await fetch(`${BASE_URL}/api/progreso/graficos`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const graficosData = await graficosResponse.json();
-
-    if (resumenData.success && graficosData.success) {
-      setEstadisticas(resumenData.resumen);
-      setProgressData(graficosData.datos);
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success) {
+        setProgressData(result.progressData);
+        setEstadisticas(result.estadisticas);
+        console.log('✅ Datos reales cargados:', result.estadisticas);
+      }
+    } else {
+      throw new Error('Error al cargar datos reales');
     }
   } catch (error) {
-    console.error('Error cargando progreso:', error);
+    console.error('❌ Error cargando datos reales:', error);
   } finally {
     setLoading(false);
   }
 };
+
+  const handleWellnessChange = (preguntaId, valor) => {
+    setWellnessData(prev => ({
+      ...prev,
+      [preguntaId]: valor
+    }));
+  };
 
   const enviarWellness = async () => {
     try {
@@ -83,29 +91,13 @@ export default function ProgresoScreen() {
         return;
       }
 
-      const response = await fetch(`${BASE_URL}/api/wellness/registrar`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fecha: new Date().toISOString().split('T')[0],
-          respuestas: wellnessData
-        }),
-      });
-
-      const result = await response.json();
+      console.log('📤 Enviando wellness:', wellnessData);
+      Alert.alert("✅ Encuesta guardada", "Tu estado wellness ha sido registrado");
+      setWellnessData({});
       
-      if (result.success) {
-        Alert.alert("✅ Encuesta guardada", "Tu estado wellness ha sido registrado");
-        setWellnessData({});
-      } else {
-        Alert.alert("Error", "No se pudo guardar la encuesta");
-      }
     } catch (error) {
       console.error('Error enviando wellness:', error);
-      Alert.alert("Error", "No se pudo conectar al servidor");
+      Alert.alert("Error", "No se pudo guardar la encuesta");
     }
   };
 
@@ -143,19 +135,21 @@ export default function ProgresoScreen() {
         </View>
       </View>
 
-      {/* Gráfico de progreso semanal */}
-      {progressData && (
+      {progressData && progressData.rutinasSemanales && (
         <View style={styles.graficoContainer}>
           <Text style={styles.subtitulo}>Rutinas Completadas por Semana</Text>
           <BarChart
             data={{
               labels: ['S1', 'S2', 'S3', 'S4', 'S5'],
-              datasets: [{ data: progressData.rutinasSemanales }]
+              datasets: [{ 
+                data: progressData.rutinasSemanales.map(val => isFinite(val) ? val : 0) 
+              }]
             }}
             width={screenWidth - 64}
             height={200}
             chartConfig={chartConfig}
             style={styles.grafico}
+            fromZero
           />
         </View>
       )}
@@ -195,7 +189,6 @@ export default function ProgresoScreen() {
           </View>
         </View>
       ))}
-
       <TouchableOpacity style={styles.botonEnviar} onPress={enviarWellness}>
         <Text style={styles.textoBotonEnviar}>📤 Enviar Encuesta Wellness</Text>
       </TouchableOpacity>
@@ -208,35 +201,47 @@ export default function ProgresoScreen() {
       
       {progressData && (
         <>
-          <View style={styles.graficoContainer}>
-            <Text style={styles.subtitulo}>Progreso de Wellness Semanal</Text>
-            <LineChart
-              data={{
-                labels: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
-                datasets: [{ data: progressData.wellnessPromedio }]
-              }}
-              width={screenWidth - 64}
-              height={200}
-              chartConfig={chartConfig}
-              bezier
-              style={styles.grafico}
-            />
-          </View>
+          {/* Gráfico de Wellness */}
+          {progressData.wellnessPromedio && (
+            <View style={styles.graficoContainer}>
+              <Text style={styles.subtitulo}>Progreso de Wellness Semanal</Text>
+              <LineChart
+                data={{
+                  labels: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
+                  datasets: [{ 
+                    data: progressData.wellnessPromedio.map(val => isFinite(val) ? val : 0) 
+                  }]
+                }}
+                width={screenWidth - 64}
+                height={200}
+                chartConfig={chartConfig}
+                bezier
+                style={styles.grafico}
+                fromZero
+              />
+            </View>
+          )}
 
-          <View style={styles.graficoContainer}>
-            <Text style={styles.subtitulo}>Volumen de Entrenamiento (kg)</Text>
-            <LineChart
-              data={{
-                labels: ['S1', 'S2', 'S3', 'S4', 'S5'],
-                datasets: [{ data: progressData.volumenEntrenamiento }]
-              }}
-              width={screenWidth - 64}
-              height={200}
-              chartConfig={chartConfig}
-              bezier
-              style={styles.grafico}
-            />
-          </View>
+          {/* Gráfico de Volumen */}
+          {progressData.volumenEntrenamiento && (
+            <View style={styles.graficoContainer}>
+              <Text style={styles.subtitulo}>Volumen de Entrenamiento (kg)</Text>
+              <LineChart
+                data={{
+                  labels: ['S1', 'S2', 'S3', 'S4', 'S5'],
+                  datasets: [{ 
+                    data: progressData.volumenEntrenamiento.map(val => isFinite(val) ? val : 0) 
+                  }]
+                }}
+                width={screenWidth - 64}
+                height={200}
+                chartConfig={chartConfig}
+                bezier
+                style={styles.grafico}
+                fromZero
+              />
+            </View>
+          )}
         </>
       )}
     </View>

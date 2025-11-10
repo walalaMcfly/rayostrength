@@ -59,7 +59,7 @@ export default function RutinasScreen() {
       const response = await fetch(`${BASE_URL}/api/rutinas/Rayostrenght`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${userToken}`, // ✅ TOKEN REAL
+          'Authorization': `Bearer ${userToken}`, 
           'Content-Type': 'application/json',
         },
       });
@@ -97,61 +97,206 @@ export default function RutinasScreen() {
     }
   };
 
+  const marcarRutinaCompletada = async () => {
+  try {
+    const totalEjercicios = rutinas.length;
+    const ejerciciosCompletados = rutinas.filter(ejercicio => {
+      const setsCompletados = Object.values(setsCompletados[ejercicio.id] || {}).filter(Boolean).length;
+      return setsCompletados === ejercicio.series;
+    }).length;
+
+    await fetch(`${BASE_URL}/api/progreso/sesion`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${userToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        semana_rutina: 'Rayostrenght', // o la semana actual
+        total_ejercicios: totalEjercicios,
+        ejercicios_completados: ejerciciosCompletados,
+        duracion_total_minutos: 60, // Podrías calcular esto
+        volumen_total: 1500, // Podrías calcular esto
+        rpe_promedio: 7, // Podrías calcular esto
+        rir_promedio: 2, // Podrías calcular esto
+        notas_usuario: 'Rutina completada hoy'
+      }),
+    });
+
+    Alert.alert('¡Felicidades!', 'Rutina marcada como completada');
+  } catch (error) {
+    console.error('Error marcando rutina completada:', error);
+    Alert.alert('Error', 'No se pudo marcar la rutina como completada');
+  }
+};
+
+// Y agregar el botón en tu JSX:
+<TouchableOpacity style={styles.completarButton} onPress={marcarRutinaCompletada}>
+  <Text style={styles.completarButtonText}>✅ Marcar Rutina Completada</Text>
+</TouchableOpacity>
+
   
   const onRefresh = async () => {
     setRefreshing(true);
     await cargarRutinas();
     setRefreshing(false);
   };
+const toggleSet = async (ejercicioId, setNumber) => {
+  const nuevosSets = { ...setsCompletados };
+  if (!nuevosSets[ejercicioId]) nuevosSets[ejercicioId] = {};
+  
+  nuevosSets[ejercicioId][setNumber] = !nuevosSets[ejercicioId]?.[setNumber];
+  setSetsCompletados(nuevosSets);
 
-  const toggleSet = async (ejercicioId, setNumber) => {
-    const nuevosSets = { ...setsCompletados };
-    if (!nuevosSets[ejercicioId]) nuevosSets[ejercicioId] = {};
+  try {
+    // Contar cuántos sets están completados
+    const setsCompletadosCount = Object.values(nuevosSets[ejercicioId] || {}).filter(Boolean).length;
     
-    nuevosSets[ejercicioId][setNumber] = !nuevosSets[ejercicioId]?.[setNumber];
-    setSetsCompletados(nuevosSets);
-
-    try {
-      await fetch(`${BASE_URL}/api/rutinas/completar`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${userToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          semana: 'Rayostrenght',
-          ejercicioId: ejercicioId,
-          setsCompletados: nuevosSets[ejercicioId]
-        }),
-      });
-    } catch (error) {
-      console.error('Error guardando progreso:', error);
-    }
-  };
-
-  const guardarNotas = async (ejercicioId, texto) => {
-    const nuevasNotas = { ...notasCliente, [ejercicioId]: texto };
-    setNotasCliente(nuevasNotas);
-
+    // Encontrar el ejercicio actual
+    const ejercicio = rutinas.find(e => e.id === ejercicioId);
     
-    try {
-      await fetch(`${BASE_URL}/api/rutinas/notas`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${userToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          semana: 'Rayostrenght',
-          ejercicioId: ejercicioId,
-          notasCliente: texto
-        }),
-      });
-    } catch (error) {
-      console.error('Error guardando notas:', error);
-    }
-  };
+    // Guardar progreso en la base de datos
+    await fetch(`${BASE_URL}/api/progreso/guardar-ejercicio`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${userToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id_ejercicio: ejercicioId,
+        nombre_ejercicio: ejercicio?.nombre,
+        sets_completados: setsCompletadosCount,
+        reps_logradas: ejercicio?.reps,
+        peso_utilizado: ejercicio?.peso,
+        rir_final: ejercicio?.rir,
+        rpe_final: ejercicio?.rpe,
+        notas: notasCliente[ejercicioId] || ''
+      }),
+    });
 
+    console.log(`✅ Guardado progreso: ${ejercicio?.nombre} - ${setsCompletadosCount} sets`);
+
+    // Si se completaron todos los sets, verificar si se completó toda la rutina
+    if (setsCompletadosCount === ejercicio?.series) {
+      verificarRutinaCompletada();
+    }
+
+  } catch (error) {
+    console.error('Error guardando progreso:', error);
+  }
+};
+
+const verificarRutinaCompletada = async () => {
+  try {
+    const ejerciciosCompletados = rutinas.filter(ejercicio => {
+      const setsDelEjercicio = setsCompletados[ejercicio.id] || {};
+      const setsCompletadosCount = Object.values(setsDelEjercicio).filter(Boolean).length;
+      return setsCompletadosCount === ejercicio.series;
+    }).length;
+
+    const porcentajeCompletitud = (ejerciciosCompletados / rutinas.length) * 100;
+    console.log(`📊 Progreso rutina: ${ejerciciosCompletados}/${rutinas.length} (${porcentajeCompletitud}%)`);
+
+    if (porcentajeCompletitud >= 80 && ejerciciosCompletados < rutinas.length) {
+      Alert.alert(
+        "¿Rutina completada?",
+        `Has completado ${ejerciciosCompletados} de ${rutinas.length} ejercicios. ¿Quieres marcar la rutina como completada?`,
+        [
+          { text: "No, aún no", style: "cancel" },
+          { 
+            text: "Sí, completada", 
+            onPress: () => registrarSesionCompletada(ejerciciosCompletados) 
+          }
+        ]
+      );
+    }
+    if (ejerciciosCompletados === rutinas.length) {
+      registrarSesionCompletada(ejerciciosCompletados);
+    }
+
+  } catch (error) {
+    console.error('Error verificando rutina completada:', error);
+  }
+};
+
+
+const registrarSesionCompletada = async (ejerciciosCompletados) => {
+  try {
+    const volumenTotal = rutinas.reduce((total, ejercicio) => {
+      const peso = parseInt(ejercicio.peso) || 0;
+      const series = ejercicio.series || 0;
+      const reps = parseInt(ejercicio.reps) || 0;
+      return total + (peso * series * reps);
+    }, 0);
+
+    const rpePromedio = rutinas.reduce((total, ejercicio) => total + (ejercicio.rpe || 0), 0) / rutinas.length;
+    const rirPromedio = rutinas.reduce((total, ejercicio) => total + (ejercicio.rir || 0), 0) / rutinas.length;
+
+    await fetch(`${BASE_URL}/api/progreso/registrar-sesion`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${userToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        semana_rutina: 'Rayostrenght',
+        total_ejercicios: rutinas.length,
+        ejercicios_completados: ejerciciosCompletados,
+        duracion_total_minutos: 60, 
+        volumen_total: volumenTotal,
+        rpe_promedio: rpePromedio,
+        rir_promedio: rirPromedio,
+        notas_usuario: 'Rutina completada exitosamente'
+      }),
+    });
+
+    Alert.alert("🎉 ¡Rutina Completada!", "Tu progreso ha sido guardado correctamente");
+
+  } catch (error) {
+    console.error('Error registrando sesión completada:', error);
+    Alert.alert("Error", "No se pudo guardar la sesión completada");
+  }
+};
+
+<TouchableOpacity 
+  style={styles.botonCompletarRutina}
+  onPress={() => {
+    const ejerciciosCompletados = rutinas.filter(ejercicio => {
+      const setsCompletadosCount = Object.values(setsCompletados[ejercicio.id] || {}).filter(Boolean).length;
+      return setsCompletadosCount === ejercicio.series;
+    }).length;
+    registrarSesionCompletada(ejerciciosCompletados);
+  }}
+>
+  <Text style={styles.textoBotonCompletarRutina}>✅ Marcar Rutina como Completada</Text>
+</TouchableOpacity>
+
+const guardarNotas = async (ejercicioId, texto) => {
+  const nuevasNotas = { ...notasCliente, [ejercicioId]: texto };
+  setNotasCliente(nuevasNotas);
+
+  try {
+    await fetch(`${BASE_URL}/api/progreso/ejercicio`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${userToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id_ejercicio: ejercicioId,
+        nombre_ejercicio: rutinas.find(e => e.id === ejercicioId)?.nombre,
+        sets_completados: Object.values(setsCompletados[ejercicioId] || {}).filter(Boolean).length,
+        reps_logradas: rutinas.find(e => e.id === ejercicioId)?.reps,
+        peso_utilizado: rutinas.find(e => e.id === ejercicioId)?.peso,
+        rir_final: rutinas.find(e => e.id === ejercicioId)?.rir,
+        rpe_final: rutinas.find(e => e.id === ejercicioId)?.rpe,
+        notas: texto
+      }),
+    });
+  } catch (error) {
+    console.error('Error guardando notas:', error);
+  }
+};
   const renderItem = ({ item }) => (
     <View style={styles.card}>
       <Text style={styles.exerciseName}>{item.nombre}</Text>
@@ -305,4 +450,19 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: colors.text,
   },
+
+botonCompletarRutina: {
+  backgroundColor: colors.active,
+  padding: 16,
+  borderRadius: 12,
+  alignItems: 'center',
+  marginTop: 20,
+  marginHorizontal: 16,
+  marginBottom: 24,
+},
+textoBotonCompletarRutina: {
+  color: colors.card,
+  fontSize: 16,
+  fontWeight: 'bold',
+},
 });
