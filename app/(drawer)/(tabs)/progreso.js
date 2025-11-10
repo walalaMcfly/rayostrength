@@ -105,29 +105,40 @@ export default function ProgresoScreen() {
 const enviarWellness = async () => {
   try {
     const token = await AsyncStorage.getItem('userToken');
-    const respuestasCompletas = wellnessQuestions.every(q => wellnessData[q.id]);
+    
+
+    const preguntasObligatorias = wellnessQuestions.filter(q => q.id !== 'apetito');
+    const respuestasCompletas = preguntasObligatorias.every(q => 
+      wellnessData[q.id] !== undefined && wellnessData[q.id] !== null
+    );
     
     if (!respuestasCompletas) {
-      Alert.alert("Completa la encuesta", "Por favor responde todas las preguntas");
+      Alert.alert(
+        "Encuesta incompleta", 
+        "Por favor responde todas las preguntas obligatorias (las primeras 5)"
+      );
       return;
     }
 
-    // ✅ LLAMADA REAL AL BACKEND
+    const datosWellness = {
+      energia: wellnessData.energia || 5,
+      sueno: wellnessData.sueno || 5,
+      estres: wellnessData.estres || 5,
+      dolor_muscular: wellnessData.dolor || 5,
+      motivacion: wellnessData.motivacion || 5,
+      apetito: wellnessData.apetito || 5, 
+      notas: 'Encuesta completada desde la app - ' + new Date().toLocaleDateString()
+    };
+
+    console.log('📤 Enviando wellness:', datosWellness);
+
     const response = await fetch(`${BASE_URL}/api/wellness/registrar`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        energia: wellnessData.energia,
-        sueno: wellnessData.sueno,
-        estres: wellnessData.estres,
-        dolor_muscular: wellnessData.dolor,
-        motivacion: wellnessData.motivacion,
-        apetito: wellnessData.apetito,
-        notas: 'Encuesta completada desde la app'
-      }),
+      body: JSON.stringify(datosWellness),
     });
 
     const result = await response.json();
@@ -135,7 +146,6 @@ const enviarWellness = async () => {
     if (result.success) {
       Alert.alert("✅ Encuesta guardada", "Tu estado wellness ha sido registrado correctamente");
       setWellnessData({});
-      // Recargar datos para actualizar gráficos
       cargarDatosProgreso();
     } else {
       Alert.alert("Error", result.message || "No se pudo guardar la encuesta");
