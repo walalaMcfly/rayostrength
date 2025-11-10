@@ -46,29 +46,32 @@ export default function ProgresoScreen() {
   }, []);
 
   const cargarDatosProgreso = async () => {
-    try {
-      setLoading(true);
-      // Aquí cargarás datos reales del backend
-      // Por ahora usamos datos de ejemplo
-      setProgressData({
-        rutinasSemanales: [3, 4, 5, 4, 6],
-        wellnessPromedio: [6, 7, 8, 7, 6, 8, 7],
-        progresoPesos: [60, 62, 65, 63, 68],
-        volumenEntrenamiento: [1200, 1350, 1420, 1380, 1500]
-      });
-    } catch (error) {
-      console.error('Error cargando progreso:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  try {
+    setLoading(true);
+    const token = await AsyncStorage.getItem('userToken');
 
-  const handleWellnessChange = (preguntaId, valor) => {
-    setWellnessData(prev => ({
-      ...prev,
-      [preguntaId]: valor
-    }));
-  };
+    // Cargar resumen
+    const resumenResponse = await fetch(`${BASE_URL}/api/progreso/resumen`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const resumenData = await resumenResponse.json();
+
+    // Cargar datos para gráficos
+    const graficosResponse = await fetch(`${BASE_URL}/api/progreso/graficos`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const graficosData = await graficosResponse.json();
+
+    if (resumenData.success && graficosData.success) {
+      setEstadisticas(resumenData.resumen);
+      setProgressData(graficosData.datos);
+    }
+  } catch (error) {
+    console.error('Error cargando progreso:', error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const enviarWellness = async () => {
     try {

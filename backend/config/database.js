@@ -25,7 +25,6 @@ const createTables = async () => {
   try {
     const connection = await pool.getConnection();
     
-    // Tabla Usuario (MANTENIENDO tu estructura EXACTA)
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS Usuario (
         id_usuario INT NOT NULL AUTO_INCREMENT,
@@ -42,8 +41,7 @@ const createTables = async () => {
         UNIQUE INDEX email (email)
       ) ENGINE=InnoDB
     `);
-    
-    // Tabla Coach (MANTENIENDO tu estructura EXACTA)
+   
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS Coach (
         id_coach INT NOT NULL AUTO_INCREMENT,
@@ -61,7 +59,7 @@ const createTables = async () => {
       ) ENGINE=InnoDB
     `);
     
-    // Tabla Progreso (MANTENIENDO tu estructura actual)
+
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS Progreso (
         id_progreso INT AUTO_INCREMENT PRIMARY KEY,
@@ -79,7 +77,6 @@ const createTables = async () => {
       ) ENGINE=InnoDB
     `);
 
-    // ✅ NUEVA TABLA: Wellness (Encuestas diarias)
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS Wellness (
         id_wellness INT AUTO_INCREMENT PRIMARY KEY,
@@ -98,7 +95,7 @@ const createTables = async () => {
       ) ENGINE=InnoDB
     `);
 
-    // ✅ NUEVA TABLA: ProgresoRutinas (Tracking específico por ejercicio)
+
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS ProgresoRutinas (
         id_progreso_rutina INT AUTO_INCREMENT PRIMARY KEY,
@@ -118,7 +115,6 @@ const createTables = async () => {
       ) ENGINE=InnoDB
     `);
 
-    // ✅ NUEVA TABLA: CoachUsuario (Relación Coach-Usuario)
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS CoachUsuario (
         id_relacion INT AUTO_INCREMENT PRIMARY KEY,
@@ -135,7 +131,7 @@ const createTables = async () => {
       ) ENGINE=InnoDB
     `);
 
-    // ✅ NUEVA TABLA: SesionesEntrenamiento (Sesiones completadas)
+   
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS SesionesEntrenamiento (
         id_sesion INT AUTO_INCREMENT PRIMARY KEY,
