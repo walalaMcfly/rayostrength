@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { BarChart, LineChart } from "react-native-chart-kit";
+import { BarChart } from "react-native-chart-kit";
 import { colors } from "../../../constants/theme";
 
 const screenWidth = Dimensions.get("window").width;
@@ -23,12 +23,12 @@ export default function ProgresoScreen() {
   const [progressData, setProgressData] = useState(null);
 
   const [estadisticas, setEstadisticas] = useState({
-    rutinasCompletadas: 12,
-    totalRutinas: 20,
-    porcentajeCompletitud: 60,
-    mejorRPE: 8,
-    promedioRIR: 2.5,
-    volumenSemanal: 45
+    rutinasCompletadas: 0,
+    totalRutinas: 0,
+    porcentajeCompletitud: 0,
+    mejorRPE: 0,
+    promedioRIR: 0,
+    volumenSemanal: 0
   });
 
   const wellnessQuestions = [
@@ -44,35 +44,56 @@ export default function ProgresoScreen() {
     cargarDatosProgreso();
   }, []);
 
- const cargarDatosProgreso = async () => {
-  try {
-    setLoading(true);
-    const token = await AsyncStorage.getItem('userToken');
+  const cargarDatosProgreso = async () => {
+    try {
+      setLoading(true);
+      const token = await AsyncStorage.getItem('userToken');
 
-    const response = await fetch(`${BASE_URL}/api/progreso/datos-reales`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+      // Intentar cargar datos reales del backend
+      try {
+        const response = await fetch(`${BASE_URL}/api/progreso/datos-reales`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
 
-    if (response.ok) {
-      const result = await response.json();
-      if (result.success) {
-        setProgressData(result.progressData);
-        setEstadisticas(result.estadisticas);
-        console.log('✅ Datos reales cargados:', result.estadisticas);
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            setProgressData(result.progressData);
+            setEstadisticas(result.estadisticas);
+            console.log('✅ Datos reales cargados:', result.estadisticas);
+            return;
+          }
+        }
+      } catch (apiError) {
+        console.log('⚠️ Usando datos de ejemplo:', apiError.message);
       }
-    } else {
-      throw new Error('Error al cargar datos reales');
+
+      // Datos de ejemplo como fallback
+      const datosEjemplo = {
+        rutinasSemanales: [3, 4, 5, 4, 6],
+        wellnessPromedio: [6, 7, 8, 7, 6, 8, 7]
+      };
+      
+      setProgressData(datosEjemplo);
+      setEstadisticas({
+        rutinasCompletadas: 12,
+        totalRutinas: 20,
+        porcentajeCompletitud: 60,
+        mejorRPE: 8,
+        promedioRIR: 2.5,
+        volumenSemanal: 45
+      });
+      
+    } catch (error) {
+      console.error('❌ Error cargando progreso:', error);
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error('❌ Error cargando datos reales:', error);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const handleWellnessChange = (preguntaId, valor) => {
     setWellnessData(prev => ({
@@ -81,29 +102,54 @@ export default function ProgresoScreen() {
     }));
   };
 
-  const enviarWellness = async () => {
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      const respuestasCompletas = wellnessQuestions.every(q => wellnessData[q.id]);
-      
-      if (!respuestasCompletas) {
-        Alert.alert("Completa la encuesta", "Por favor responde todas las preguntas");
-        return;
-      }
-
-      console.log('📤 Enviando wellness:', wellnessData);
-      Alert.alert("✅ Encuesta guardada", "Tu estado wellness ha sido registrado");
-      setWellnessData({});
-      
-    } catch (error) {
-      console.error('Error enviando wellness:', error);
-      Alert.alert("Error", "No se pudo guardar la encuesta");
+const enviarWellness = async () => {
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    const respuestasCompletas = wellnessQuestions.every(q => wellnessData[q.id]);
+    
+    if (!respuestasCompletas) {
+      Alert.alert("Completa la encuesta", "Por favor responde todas las preguntas");
+      return;
     }
-  };
+
+    // ✅ LLAMADA REAL AL BACKEND
+    const response = await fetch(`${BASE_URL}/api/wellness/registrar`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        energia: wellnessData.energia,
+        sueno: wellnessData.sueno,
+        estres: wellnessData.estres,
+        dolor_muscular: wellnessData.dolor,
+        motivacion: wellnessData.motivacion,
+        apetito: wellnessData.apetito,
+        notas: 'Encuesta completada desde la app'
+      }),
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      Alert.alert("✅ Encuesta guardada", "Tu estado wellness ha sido registrado correctamente");
+      setWellnessData({});
+      // Recargar datos para actualizar gráficos
+      cargarDatosProgreso();
+    } else {
+      Alert.alert("Error", result.message || "No se pudo guardar la encuesta");
+    }
+    
+  } catch (error) {
+    console.error('Error enviando wellness:', error);
+    Alert.alert("Error de conexión", "No se pudo conectar con el servidor");
+  }
+};
 
   const renderResumen = () => (
     <View style={styles.seccion}>
-      <Text style={styles.tituloSeccion}>📈 Resumen de Progreso</Text>
+      <Text style={styles.tituloSeccion}>📈 Tu Progreso</Text>
       
       <View style={styles.estadisticasGrid}>
         <View style={styles.estadisticaCard}>
@@ -122,22 +168,26 @@ export default function ProgresoScreen() {
         <View style={styles.estadisticaCard}>
           <Text style={styles.estadisticaNumero}>{estadisticas.promedioRIR}</Text>
           <Text style={styles.estadisticaLabel}>RIR Promedio</Text>
+          <Text style={styles.estadisticaSubtexto}>(Menos es mejor)</Text>
         </View>
 
         <View style={styles.estadisticaCard}>
           <Text style={styles.estadisticaNumero}>{estadisticas.mejorRPE}/10</Text>
           <Text style={styles.estadisticaLabel}>Mejor RPE</Text>
+          <Text style={styles.estadisticaSubtexto}>(Esfuerzo percibido)</Text>
         </View>
 
         <View style={styles.estadisticaCard}>
           <Text style={styles.estadisticaNumero}>{estadisticas.volumenSemanal}</Text>
           <Text style={styles.estadisticaLabel}>Volumen Semanal</Text>
+          <Text style={styles.estadisticaSubtexto}>(kg totales)</Text>
         </View>
       </View>
 
+      {/* Solo un gráfico simple y confiable */}
       {progressData && progressData.rutinasSemanales && (
         <View style={styles.graficoContainer}>
-          <Text style={styles.subtitulo}>Rutinas Completadas por Semana</Text>
+          <Text style={styles.subtitulo}>Rutinas Completadas (Últimas 5 semanas)</Text>
           <BarChart
             data={{
               labels: ['S1', 'S2', 'S3', 'S4', 'S5'],
@@ -146,13 +196,31 @@ export default function ProgresoScreen() {
               }]
             }}
             width={screenWidth - 64}
-            height={200}
+            height={220}
             chartConfig={chartConfig}
             style={styles.grafico}
             fromZero
+            showValuesOnTopOfBars
           />
         </View>
       )}
+
+      {/* Información adicional útil */}
+      <View style={styles.infoContainer}>
+        <Text style={styles.infoTitulo}>💡 ¿Cómo interpretar tus métricas?</Text>
+        <View style={styles.infoItem}>
+          <Text style={styles.infoLabel}>RIR (Reps in Reserve):</Text>
+          <Text style={styles.infoText}>Cuántas repeticiones te quedaban en el tanque. Ideal: 1-2</Text>
+        </View>
+        <View style={styles.infoItem}>
+          <Text style={styles.infoLabel}>RPE (Rate of Perceived Exertion):</Text>
+          <Text style={styles.infoText}>Tu esfuerzo percibido. Ideal: 7-9</Text>
+        </View>
+        <View style={styles.infoItem}>
+          <Text style={styles.infoLabel}>Volumen:</Text>
+          <Text style={styles.infoText}>Peso total levantado. Busca progresión gradual.</Text>
+        </View>
+      </View>
     </View>
   );
 
@@ -160,7 +228,7 @@ export default function ProgresoScreen() {
     <View style={styles.seccion}>
       <Text style={styles.tituloSeccion}>🧘 Wellness Diario</Text>
       <Text style={styles.descripcion}>
-        Evalúa cómo te sientes hoy. Esto ayuda a tu coach a ajustar tu entrenamiento.
+        Evalúa cómo te sientes hoy. Esta información ayuda a tu coach a ajustar tu entrenamiento según tu recuperación.
       </Text>
 
       {wellnessQuestions.map((pregunta) => (
@@ -189,61 +257,17 @@ export default function ProgresoScreen() {
           </View>
         </View>
       ))}
+
       <TouchableOpacity style={styles.botonEnviar} onPress={enviarWellness}>
         <Text style={styles.textoBotonEnviar}>📤 Enviar Encuesta Wellness</Text>
       </TouchableOpacity>
-    </View>
-  );
 
-  const renderEstadisticas = () => (
-    <View style={styles.seccion}>
-      <Text style={styles.tituloSeccion}>📊 Estadísticas Detalladas</Text>
-      
-      {progressData && (
-        <>
-          {/* Gráfico de Wellness */}
-          {progressData.wellnessPromedio && (
-            <View style={styles.graficoContainer}>
-              <Text style={styles.subtitulo}>Progreso de Wellness Semanal</Text>
-              <LineChart
-                data={{
-                  labels: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
-                  datasets: [{ 
-                    data: progressData.wellnessPromedio.map(val => isFinite(val) ? val : 0) 
-                  }]
-                }}
-                width={screenWidth - 64}
-                height={200}
-                chartConfig={chartConfig}
-                bezier
-                style={styles.grafico}
-                fromZero
-              />
-            </View>
-          )}
-
-          {/* Gráfico de Volumen */}
-          {progressData.volumenEntrenamiento && (
-            <View style={styles.graficoContainer}>
-              <Text style={styles.subtitulo}>Volumen de Entrenamiento (kg)</Text>
-              <LineChart
-                data={{
-                  labels: ['S1', 'S2', 'S3', 'S4', 'S5'],
-                  datasets: [{ 
-                    data: progressData.volumenEntrenamiento.map(val => isFinite(val) ? val : 0) 
-                  }]
-                }}
-                width={screenWidth - 64}
-                height={200}
-                chartConfig={chartConfig}
-                bezier
-                style={styles.grafico}
-                fromZero
-              />
-            </View>
-          )}
-        </>
-      )}
+      <View style={styles.wellnessInfo}>
+        <Text style={styles.wellnessInfoTitulo}>¿Por qué es importante el Wellness?</Text>
+        <Text style={styles.wellnessInfoText}>
+          Tu recuperación diaria afecta directamente tu rendimiento. Un wellness bajo puede indicar que necesitas más descanso o ajustar la intensidad.
+        </Text>
+      </View>
     </View>
   );
 
@@ -258,14 +282,14 @@ export default function ProgresoScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Navegación por pestañas */}
+      {/* Solo 2 pestañas: Resumen y Wellness */}
       <View style={styles.tabsContainer}>
         <TouchableOpacity 
           style={[styles.tab, activeTab === "resumen" && styles.tabActiva]}
           onPress={() => setActiveTab("resumen")}
         >
           <Text style={[styles.tabTexto, activeTab === "resumen" && styles.tabTextoActivo]}>
-            📈 Resumen
+            📈 Progreso
           </Text>
         </TouchableOpacity>
         
@@ -277,21 +301,11 @@ export default function ProgresoScreen() {
             🧘 Wellness
           </Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === "estadisticas" && styles.tabActiva]}
-          onPress={() => setActiveTab("estadisticas")}
-        >
-          <Text style={[styles.tabTexto, activeTab === "estadisticas" && styles.tabTextoActivo]}>
-            📊 Stats
-          </Text>
-        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.contenido}>
         {activeTab === "resumen" && renderResumen()}
         {activeTab === "wellness" && renderWellness()}
-        {activeTab === "estadisticas" && renderEstadisticas()}
       </ScrollView>
     </View>
   );
@@ -382,12 +396,19 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.active,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   estadisticaLabel: {
     color: colors.text,
     fontSize: 14,
     textAlign: 'center',
+    fontWeight: '600',
+  },
+  estadisticaSubtexto: {
+    color: colors.placeholder,
+    fontSize: 10,
+    textAlign: 'center',
+    marginTop: 2,
   },
   barraProgreso: {
     width: '100%',
@@ -412,9 +433,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 12,
+    textAlign: 'center',
   },
   grafico: {
     borderRadius: 16,
+  },
+  infoContainer: {
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+  },
+  infoTitulo: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  infoItem: {
+    marginBottom: 10,
+  },
+  infoLabel: {
+    color: colors.active,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  infoText: {
+    color: colors.text,
+    fontSize: 12,
+    marginTop: 2,
   },
   preguntaContainer: {
     backgroundColor: colors.card,
@@ -470,5 +516,22 @@ const styles = StyleSheet.create({
     color: colors.card,
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  wellnessInfo: {
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 20,
+  },
+  wellnessInfoTitulo: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  wellnessInfoText: {
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
   },
 });

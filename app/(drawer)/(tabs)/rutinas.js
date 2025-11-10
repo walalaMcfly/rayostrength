@@ -112,13 +112,13 @@ export default function RutinasScreen() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        semana_rutina: 'Rayostrenght', // o la semana actual
+        semana_rutina: 'Rayostrenght', 
         total_ejercicios: totalEjercicios,
         ejercicios_completados: ejerciciosCompletados,
-        duracion_total_minutos: 60, // Podrías calcular esto
-        volumen_total: 1500, // Podrías calcular esto
-        rpe_promedio: 7, // Podrías calcular esto
-        rir_promedio: 2, // Podrías calcular esto
+        duracion_total_minutos: 60, 
+        volumen_total: 1500, 
+        rpe_promedio: 7,
+        rir_promedio: 2, 
         notas_usuario: 'Rutina completada hoy'
       }),
     });
@@ -130,7 +130,6 @@ export default function RutinasScreen() {
   }
 };
 
-// Y agregar el botón en tu JSX:
 <TouchableOpacity style={styles.completarButton} onPress={marcarRutinaCompletada}>
   <Text style={styles.completarButtonText}>✅ Marcar Rutina Completada</Text>
 </TouchableOpacity>
@@ -149,14 +148,9 @@ const toggleSet = async (ejercicioId, setNumber) => {
   setSetsCompletados(nuevosSets);
 
   try {
-    // Contar cuántos sets están completados
     const setsCompletadosCount = Object.values(nuevosSets[ejercicioId] || {}).filter(Boolean).length;
-    
-    // Encontrar el ejercicio actual
     const ejercicio = rutinas.find(e => e.id === ejercicioId);
-    
-    // Guardar progreso en la base de datos
-    await fetch(`${BASE_URL}/api/progreso/guardar-ejercicio`, {
+    const response = await fetch(`${BASE_URL}/api/progreso/guardar-ejercicio`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${userToken}`,
@@ -170,15 +164,14 @@ const toggleSet = async (ejercicioId, setNumber) => {
         peso_utilizado: ejercicio?.peso,
         rir_final: ejercicio?.rir,
         rpe_final: ejercicio?.rpe,
-        notas: notasCliente[ejercicioId] || ''
+        notas: notasCliente[ejercicioId] || `Sets completados: ${setsCompletadosCount}`
       }),
     });
 
-    console.log(`✅ Guardado progreso: ${ejercicio?.nombre} - ${setsCompletadosCount} sets`);
-
-    // Si se completaron todos los sets, verificar si se completó toda la rutina
-    if (setsCompletadosCount === ejercicio?.series) {
-      verificarRutinaCompletada();
+    const result = await response.json();
+    
+    if (result.success) {
+      console.log(`✅ Progreso guardado: ${ejercicio?.nombre} - ${setsCompletadosCount} sets`);
     }
 
   } catch (error) {
