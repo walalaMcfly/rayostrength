@@ -339,15 +339,15 @@ export default function RutinasScreen() {
           ))}
         </View>
 
-        <TouchableOpacity 
-          style={styles.botonReales}
-          onPress={() => abrirModalDatosReales(item)}
-        >
-          <Ionicons name="create-outline" size={16} color={colors.text} />
-          <Text style={styles.textoBotonReales}>
-            {datosReales ? 'Editar datos reales' : 'Ingresar datos reales'}
-          </Text>
-        </TouchableOpacity>
+       <TouchableOpacity 
+  style={styles.botonReales}
+  onPress={() => abrirModalDatosReales(item)}
+>
+  <Ionicons name="create-outline" size={16} color={colors.text} />
+  <Text style={styles.textoBotonReales}>
+    {datosReales ? 'Editar peso y reps' : 'Registrar peso y reps reales'}
+  </Text>
+</TouchableOpacity>
 
         <View style={styles.feedbackBox}>
           <Text style={styles.feedbackLabel}>Nota Cliente:</Text>
@@ -399,63 +399,64 @@ export default function RutinasScreen() {
       </TouchableOpacity>
 
 
-      <Modal
-        visible={!!ejercicioEditando}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setEjercicioEditando(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>📝 Datos Reales - {ejercicioEditando?.nombre}</Text>
-            
-            <View style={styles.modalField}>
-              <Text style={styles.modalLabel}>Reps Realizadas:</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={repsTemp}
-                onChangeText={setRepsTemp}
-                placeholder="Ej: 10, 8-12, 15"
-                placeholderTextColor={colors.placeholder}
-                keyboardType="default"
-              />
-            </View>
+     <Modal
+  visible={!!ejercicioEditando}
+  transparent={true}
+  animationType="slide"
+  onRequestClose={() => setEjercicioEditando(null)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      <Text style={styles.modalTitle}>📝 Peso y Repeticiones Realizadas - {ejercicioEditando?.nombre}</Text>
+      
+      <View style={styles.modalField}>
+        <Text style={styles.modalLabel}>Repeticiones Realizadas:</Text>
+        <TextInput
+          style={styles.modalInput}
+          value={repsTemp}
+          onChangeText={setRepsTemp}
+          placeholder="Ej: 10, 8-12, 15"
+          placeholderTextColor={colors.placeholder}
+          keyboardType="default"
+        />
+      </View>
 
-            <View style={styles.modalField}>
-              <Text style={styles.modalLabel}>Peso Real (kg):</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={pesoTemp}
-                onChangeText={setPesoTemp}
-                placeholder="Ej: 40, 50-60, barra"
-                placeholderTextColor={colors.placeholder}
-                keyboardType="default"
-              />
-            </View>
+      <View style={styles.modalField}>
+        <Text style={styles.modalLabel}>Peso Utilizado (kg):</Text>
+        <TextInput
+          style={styles.modalInput}
+          value={pesoTemp}
+          onChangeText={setPesoTemp}
+          placeholder="Ej: 40, 50-60, barra"
+          placeholderTextColor={colors.placeholder}
+          keyboardType="default"
+        />
+      </View>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.modalButtonCancel]}
-                onPress={() => setEjercicioEditando(null)}
-              >
-                <Text style={styles.modalButtonTextCancel}>Cancelar</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.modalButtonSave]}
-                onPress={() => {
-                  if (ejercicioEditando) {
-                    guardarDatosReales(ejercicioEditando.id, repsTemp, pesoTemp);
-                  }
-                  setEjercicioEditando(null);
-                }}
-              >
-                <Text style={styles.modalButtonTextSave}>Guardar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <View style={styles.modalButtons}>
+        <TouchableOpacity 
+          style={[styles.modalButton, styles.modalButtonCancel]}
+          onPress={() => setEjercicioEditando(null)}
+        >
+          <Text style={styles.modalButtonTextCancel}>Cancelar</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.modalButton, styles.modalButtonSave]}
+          onPress={() => {
+            if (ejercicioEditando) {
+              guardarDatosReales(ejercicioEditando.id, repsTemp, pesoTemp);
+            }
+            setEjercicioEditando(null);
+          }}
+        >
+          <Text style={styles.modalButtonTextSave}>Guardar</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+</Modal>
+
 
       <Modal
         visible={showModalCompletar}

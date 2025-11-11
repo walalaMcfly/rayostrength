@@ -9,6 +9,12 @@ const { pool, createTables, testConnection } = require('./config/database');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const safeSQLValue = (value) => {
+  if (value === undefined) return null;
+  if (value === '') return null;
+  return value;
+};
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -721,6 +727,52 @@ app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
     } = req.body;
 
 
+app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
+  try {
+    const { energia, sueno, estres, dolor_muscular, motivacion, apetito } = req.body;
+    const id_usuario = req.user.id;
+
+    console.log('Datos wellness recibidos:', req.body);
+
+    if (energia === undefined || sueno === undefined || estres === undefined || 
+        dolor_muscular === undefined || motivacion === undefined) {
+      return res.status(400).json({ 
+        error: 'Todos los campos son requeridos' 
+      });
+    }
+    const safeValue = (value) => value !== undefined ? value : null;
+
+    const query = `
+      INSERT INTO Wellness (id_usuario, energia, sueno, estres, dolor_muscular, motivacion, apetito, fecha)
+      VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+    `;
+    
+    const [result] = await db.execute(query, [
+      id_usuario,
+      safeValue(energia),
+      safeValue(sueno),
+      safeValue(estres),
+      safeValue(dolor_muscular),
+      safeValue(motivacion),
+      safeValue(apetito) 
+    ]);
+
+    res.json({ 
+      success: true, 
+      message: 'Encuesta wellness guardada correctamente',
+      id: result.insertId 
+    });
+
+  } catch (error) {
+    console.error('Error en wellness:', error);
+    res.status(500).json({ 
+      error: 'Error interno del servidor',
+      details: error.message 
+    });
+  }
+});
+
+
 app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) => {
   try {
     const { 
@@ -781,57 +833,44 @@ app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) =
 
 app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, res) => {
   try {
-    const { 
-      id_ejercicio, 
-      reps_reales, 
-      peso_real,
-      notas_adicionales 
-    } = req.body;
-    
-    const userId = req.user.userId;
+    const { id_ejercicio, peso_utilizado, reps_logradas } = req.body;
+    const id_usuario = req.user.id;
 
-    console.log('📝 Actualizando ejercicio con datos reales:', { id_ejercicio, reps_reales, peso_real });
+    console.log('Datos progreso recibidos:', req.body);
 
-    // Buscar el último registro de este ejercicio para hoy
-    const [ejerciciosHoy] = await pool.execute(
-      `SELECT id_progreso FROM ProgresoRutinas 
-       WHERE id_usuario = ? AND id_ejercicio = ? AND fecha = CURDATE()
-       ORDER BY fecha_creacion DESC LIMIT 1`,
-      [userId, id_ejercicio]
-    );
-
-    if (ejerciciosHoy.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'No se encontró el ejercicio para actualizar'
-      });
+    if (!id_ejercicio) {
+      return res.status(400).json({ error: 'ID de ejercicio requerido' });
     }
 
-    const idProgreso = ejerciciosHoy[0].id_progreso;
+    // Función helper para convertir undefined a null
+    const safeValue = (value) => value !== undefined ? value : null;
 
-    // Actualizar con datos reales
-    await pool.execute(
-      `UPDATE ProgresoRutinas 
-       SET reps_logradas = ?, peso_utilizado = ?, notas = CONCAT(COALESCE(notas, ''), ?)
-       WHERE id_progreso = ?`,
-      [
-        reps_reales, 
-        peso_real, 
-        notas_adicionales ? ` | Datos reales: ${notas_adicionales}` : ' | Datos reales actualizados',
-        idProgreso
-      ]
-    );
+    const query = `
+      INSERT INTO ProgresoRutinas (id_usuario, id_ejercicio, peso_utilizado, reps_logradas, fecha)
+      VALUES (?, ?, ?, ?, NOW())
+      ON DUPLICATE KEY UPDATE 
+      peso_utilizado = VALUES(peso_utilizado), 
+      reps_logradas = VALUES(reps_logradas)
+    `;
+    
+    const [result] = await db.execute(query, [
+      id_usuario,
+      id_ejercicio,
+      safeValue(peso_utilizado),
+      safeValue(reps_logradas)
+    ]);
 
-    res.json({
-      success: true,
-      message: 'Datos reales del ejercicio actualizados correctamente'
+    res.json({ 
+      success: true, 
+      message: 'Progreso guardado correctamente',
+      id: result.insertId 
     });
 
   } catch (error) {
-    console.error('❌ Error actualizando ejercicio:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al actualizar el ejercicio: ' + error.message
+    console.error('Error en progreso:', error);
+    res.status(500).json({ 
+      error: 'Error interno del servidor',
+      details: error.message 
     });
   }
 });

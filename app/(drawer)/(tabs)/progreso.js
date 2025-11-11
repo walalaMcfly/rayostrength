@@ -31,14 +31,14 @@ export default function ProgresoScreen() {
     volumenSemanal: 0
   });
 
-  const wellnessQuestions = [
-    { id: "sueno", pregunta: "💤 Calidad del sueño", escala: "1 (Malo) - 10 (Excelente)" },
-    { id: "energia", pregunta: "⚡ Nivel de energía", escala: "1 (Agotado) - 10 (Energético)" },
-    { id: "estres", pregunta: "😥 Nivel de estrés", escala: "1 (Tranquilo) - 10 (Muy estresado)" },
-    { id: "dolor", pregunta: "💪 Dolor muscular", escala: "1 (Sin dolor) - 10 (Dolor intenso)" },
-    { id: "motivacion", pregunta: "🎯 Motivación para entrenar", escala: "1 (Nada) - 10 (Muy motivado)" },
-    { id: "apetito", pregunta: "🍽️ Nivel de apetito", escala: "1 (Nada) - 10 (Muy hambriento)" }
-  ];
+ const wellnessQuestions = [
+  { id: "energia", pregunta: "⚡ Nivel de energía", escala: "1 (Agotado) - 10 (Energético)" },
+  { id: "sueno", pregunta: "💤 Calidad del sueño", escala: "1 (Malo) - 10 (Excelente)" },
+  { id: "estres", pregunta: "😥 Nivel de estrés", escala: "1 (Tranquilo) - 10 (Muy estresado)" },
+  { id: "dolor_muscular", pregunta: "💪 Dolor muscular", escala: "1 (Sin dolor) - 10 (Dolor intenso)" },
+  { id: "motivacion", pregunta: "🎯 Motivación para entrenar", escala: "1 (Nada) - 10 (Muy motivado)" },
+  { id: "apetito", pregunta: "🍽️ Nivel de apetito", escala: "1 (Nada) - 10 (Muy hambriento)" }
+];
 
   useEffect(() => {
     cargarDatosProgreso();
@@ -106,31 +106,58 @@ const enviarWellness = async () => {
   try {
     const token = await AsyncStorage.getItem('userToken');
     
-
-    const preguntasObligatorias = wellnessQuestions.filter(q => q.id !== 'apetito');
-    const respuestasCompletas = preguntasObligatorias.every(q => 
+    
+    const respuestasCompletas = wellnessQuestions.every(q => 
       wellnessData[q.id] !== undefined && wellnessData[q.id] !== null
     );
     
     if (!respuestasCompletas) {
-      Alert.alert(
-        "Encuesta incompleta", 
-        "Por favor responde todas las preguntas obligatorias (las primeras 5)"
-      );
+      Alert.alert("Encuesta incompleta", "Por favor responde todas las preguntas");
       return;
     }
 
+    
     const datosWellness = {
       energia: wellnessData.energia || 5,
       sueno: wellnessData.sueno || 5,
       estres: wellnessData.estres || 5,
-      dolor_muscular: wellnessData.dolor || 5,
+      dolor_muscular: wellnessData.dolor || 5, 
       motivacion: wellnessData.motivacion || 5,
-      apetito: wellnessData.apetito || 5, 
+      apetito: wellnessData.apetito || null,
       notas: 'Encuesta completada desde la app - ' + new Date().toLocaleDateString()
     };
 
-    console.log('📤 Enviando wellness:', datosWellness);
+    console.log('📤 Enviando wellness corregido:', datosWellness);
+
+
+    const guardarWellness = async (datosWellness) => {
+  try {
+    // Asegurar que ningún campo sea undefined
+    const payload = {
+      energia: parseInt(datosWellness.energia) || 0,
+      sueno: parseInt(datosWellness.sueno) || 0,
+      estres: parseInt(datosWellness.estres) || 0,
+      dolor_muscular: parseInt(datosWellness.dolor) || 0,
+      motivacion: parseInt(datosWellness.motivacion) || 0,
+      apetito: parseInt(datosWellness.apetito) || null, // Si no existe, envía null
+    };
+
+    console.log('Payload Wellness garantizado:', payload);
+
+    const response = await fetch('https://rayostrength-production.up.railway.app/api/wellness/registrar', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${userToken}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    // ... resto del código igual
+  } catch (error) {
+    // ... manejo de errores
+  }
+};
 
     const response = await fetch(`${BASE_URL}/api/wellness/registrar`, {
       method: 'POST',
