@@ -894,10 +894,12 @@ app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) =
 app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, res) => {
   try {
     const { id_ejercicio, peso_utilizado, reps_logradas } = req.body;
-    const userId = req.user.userId; // ← USAR userId EN LUGAR DE id
+    const userId = req.user.userId;
 
     console.log('💪 Datos progreso recibidos:', req.body);
+    console.log('👤 ID usuario:', userId);
 
+    // Validación básica
     if (!id_ejercicio) {
       return res.status(400).json({ 
         success: false,
@@ -905,27 +907,38 @@ app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, re
       });
     }
 
-    // ✅ FUNCIÓN SEGURA
+    //  FUNCIÓN SEGURA - Evitar undefined
     const safeValue = (value) => {
       if (value === undefined || value === null) return null;
+      if (typeof value === 'string' && value.trim() === '') return null;
       return value;
     };
 
+    const pesoVal = safeValue(peso_utilizado);
+    const repsVal = safeValue(reps_logradas);
+
+    console.log('🔧 Valores procesados:', { pesoVal, repsVal });
+
+    // QUERY MEJORADA - Con manejo de duplicados
     const query = `
-      INSERT INTO ProgresoRutinas (id_usuario, id_ejercicio, peso_utilizado, reps_logradas, fecha)
-      VALUES (?, ?, ?, ?, NOW())
+      INSERT INTO ProgresoRutinas 
+      (id_usuario, id_ejercicio, peso_utilizado, reps_logradas, fecha, nombre_ejercicio)
+      VALUES (?, ?, ?, ?, NOW(), 'Ejercicio temporal')
       ON DUPLICATE KEY UPDATE 
       peso_utilizado = VALUES(peso_utilizado), 
-      reps_logradas = VALUES(reps_logradas)
+      reps_logradas = VALUES(reps_logradas),
+      fecha = NOW()
     `;
-    
-    // ✅ USAR pool.execute Y safeValue
+
+    //  EJECUCIÓN SEGURA
     const [result] = await pool.execute(query, [
       userId,
       id_ejercicio,
-      safeValue(peso_utilizado),
-      safeValue(reps_logradas)
+      pesoVal,
+      repsVal
     ]);
+
+    console.log('✅ Progreso guardado en BD. ID:', result.insertId);
 
     res.json({ 
       success: true, 
@@ -938,7 +951,8 @@ app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, re
     res.status(500).json({ 
       success: false,
       error: 'Error interno del servidor',
-      details: error.message 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });

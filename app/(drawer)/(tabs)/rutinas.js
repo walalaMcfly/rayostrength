@@ -111,35 +111,77 @@ export default function RutinasScreen() {
     setPesoTemp(realesData[ejercicio.id]?.pesoReal || ejercicio.peso || '');
   };
 
-  const guardarDatosReales = async (ejercicioId, repsReales, pesoReal) => {
-    try {
-      const response = await fetch(`${BASE_URL}/api/progreso/actualizar-ejercicio`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${userToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id_ejercicio: ejercicioId,
-          reps_reales: repsReales,
-          peso_real: pesoReal,
-          notas_adicionales: `Reps reales: ${repsReales}, Peso real: ${pesoReal}`
-        }),
-      });
+const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
+  try {
+    console.log('📤 Enviando datos reales:', { 
+      ejercicioId, 
+      pesoReal, 
+      repsReal 
+    });
 
-      const result = await response.json();
-      
-      if (result.success) {
-        setRealesData(prev => ({
-          ...prev,
-          [ejercicioId]: { repsReales, pesoReal }
-        }));
-        console.log('✅ Datos reales guardados para:', ejercicioId);
-      }
-    } catch (error) {
-      console.error('Error guardando datos reales:', error);
+    const token = await AsyncStorage.getItem('userToken');
+    
+    if (!token) {
+      throw new Error('No hay token de autenticación');
     }
-  };
+
+    const payload = {
+      id_ejercicio: ejercicioId,
+      peso_utilizado: pesoReal ? parseFloat(pesoReal) : null,
+      reps_logradas: repsReal ? parseInt(repsReal) : null
+    };
+
+    console.log('📦 Payload:', payload);
+
+    const response = await fetch('https://rayostrength-production.up.railway.app/api/progreso/actualizar-ejercicio', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    console.log('🔍 Status de respuesta:', response.status);
+
+    const responseText = await response.text();
+    console.log('📄 Respuesta cruda:', responseText.substring(0, 500));
+
+    // Verificar si es HTML (error del servidor)
+    if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html>')) {
+      console.error('❌ Servidor devolvió HTML - Error 500/404');
+      throw new Error('Error interno del servidor. Contacta al administrador.');
+    }
+
+    // Intentar parsear JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ Error parseando JSON:', parseError);
+      console.error('📄 Contenido recibido:', responseText);
+      throw new Error('Respuesta inválida del servidor');
+    }
+
+    // Verificar si la respuesta indica éxito
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || data.message || `Error ${response.status}`);
+    }
+
+    console.log('✅ Datos guardados exitosamente:', data);
+    return data;
+
+  } catch (error) {
+    console.error('❌ Error completo guardarDatosReales:', error);
+    Alert.alert(
+      'Error al guardar',
+      error.message || 'No se pudieron guardar los datos. Verifica tu conexión.',
+      [{ text: 'OK' }]
+    );
+    
+    throw error;
+  }
+};
 
   const toggleSet = async (ejercicioId, setNumber) => {
     const nuevosSets = { ...setsCompletados };
@@ -181,6 +223,46 @@ export default function RutinasScreen() {
       console.error('Error guardando progreso:', error);
     }
   };
+
+  const probarEndpointProgreso = async () => {
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    console.log('🔍 Token disponible:', !!token);
+
+    const testData = {
+      id_ejercicio: 'test-' + Date.now(),
+      peso_utilizado: 50,
+      reps_logradas: 10
+    };
+
+    console.log('🧪 Probando endpoint progreso...', testData);
+
+    const response = await fetch('https://rayostrength-production.up.railway.app/api/progreso/actualizar-ejercicio', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(testData),
+    });
+
+    const text = await response.text();
+    console.log('📋 Status:', response.status);
+    console.log('📄 Respuesta:', text);
+
+    // Intentar parsear
+    try {
+      const data = JSON.parse(text);
+      console.log('✅ JSON parseado:', data);
+    } catch (e) {
+      console.error('❌ No se pudo parsear JSON:', e.message);
+    }
+
+  } catch (error) {
+    console.error('❌ Error en prueba:', error);
+  }
+};
+
 
   const verificarRutinaCompletada = async () => {
     try {
