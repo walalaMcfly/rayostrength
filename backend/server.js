@@ -906,8 +906,6 @@ app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, re
         error: 'ID de ejercicio requerido' 
       });
     }
-
-    //  FUNCIÓN SEGURA - Evitar undefined
     const safeValue = (value) => {
       if (value === undefined || value === null) return null;
       if (typeof value === 'string' && value.trim() === '') return null;
@@ -919,7 +917,6 @@ app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, re
 
     console.log('🔧 Valores procesados:', { pesoVal, repsVal });
 
-    // QUERY MEJORADA - Con manejo de duplicados
     const query = `
       INSERT INTO ProgresoRutinas 
       (id_usuario, id_ejercicio, peso_utilizado, reps_logradas, fecha, nombre_ejercicio)
@@ -930,7 +927,6 @@ app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, re
       fecha = NOW()
     `;
 
-    //  EJECUCIÓN SEGURA
     const [result] = await pool.execute(query, [
       userId,
       id_ejercicio,
