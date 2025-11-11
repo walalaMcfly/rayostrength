@@ -5,45 +5,10 @@ const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const { pool, createTables, testConnection } = require('./config/database');
+const googleSheets = require('./config/googleSheets');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Función de diagnóstico
-const probarEndpoints = async () => {
-  try {
-    const token = await AsyncStorage.getItem('userToken');
-    console.log('🔍 Token:', token ? '✅ Presente' : '❌ Ausente');
-    
-    // Probar wellness
-    const testData = {
-      energia: 8,
-      sueno: 7,
-      estres: 3,
-      dolor_muscular: 5,
-      motivacion: 9,
-      apetito: 7
-    };
-    
-    console.log('🧪 Probando endpoint wellness...');
-    const response = await fetch(`${BASE_URL}/api/wellness/registrar`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(testData),
-    });
-    
-    const text = await response.text();
-    console.log('📋 Respuesta wellness:', text);
-    
-  } catch (error) {
-    console.error('❌ Error en prueba:', error);
-  }
-};
-
-
 
 const safeSQLValue = (value) => {
   if (value === undefined) return null;
@@ -51,11 +16,9 @@ const safeSQLValue = (value) => {
   return value;
 };
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Health check
 app.get('/api/health', async (req, res) => {
   const dbStatus = await testConnection();
   res.json({ 
@@ -65,7 +28,6 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-// Middleware de autenticación
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -89,12 +51,10 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// REGISTRO DE USUARIO (actualizado para usar edad)
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { nombre, apellido, email, contraseña, edad, sexo, peso_actual, altura } = req.body;
 
-    // Validaciones
     if (!nombre || !apellido || !email || !contraseña || !edad || !sexo) {
       return res.status(400).json({
         success: false,
@@ -102,7 +62,6 @@ app.post('/api/auth/register', async (req, res) => {
       });
     }
 
-    // Verificar si el email ya existe
     const [existingUsers] = await pool.execute(
       'SELECT id_usuario FROM Usuario WHERE email = ?',
       [email]
@@ -115,17 +74,14 @@ app.post('/api/auth/register', async (req, res) => {
       });
     }
 
-    // Hash de la contraseña
     const hashedPassword = await bcrypt.hash(contraseña, 10);
 
-    // Insertar en la tabla Usuario (usando edad)
     const [result] = await pool.execute(
       `INSERT INTO Usuario (nombre, apellido, email, contraseña, edad, sexo, peso_actual, altura) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [nombre, apellido, email, hashedPassword, edad, sexo, peso_actual || null, altura || null]
     );
 
-    // Generar token
     const token = jwt.sign(
       { userId: result.insertId, email },
       process.env.JWT_SECRET,
@@ -157,7 +113,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// LOGIN DE USUARIO 
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, contraseña } = req.body;
@@ -169,7 +124,6 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
-    // Buscar usuario por email
     const [users] = await pool.execute(
       'SELECT * FROM Usuario WHERE email = ?',
       [email]
@@ -184,7 +138,6 @@ app.post('/api/auth/login', async (req, res) => {
 
     const user = users[0];
 
-    // Verificar contraseña
     const validPassword = await bcrypt.compare(contraseña, user.contraseña);
     if (!validPassword) {
       return res.status(401).json({
@@ -193,7 +146,6 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
-    // Generar token
     const token = jwt.sign(
       { userId: user.id_usuario, email: user.email },
       process.env.JWT_SECRET,
@@ -228,16 +180,9 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/debug/rutinas/:semana', async (req, res) => {
   try {
     const { semana } = req.params;
-    console.log(`🔍 [DEBUG] Solicitando rutinas para: ${semana}`);
-    console.log(`🔍 [DEBUG] Probando Google Sheets service...`);
     const health = await googleSheets.healthCheck();
-    console.log(`🔍 [DEBUG] Health check:`, health);
-    console.log(`🔍 [DEBUG] Leyendo hoja: ${semana}`);
     const data = await googleSheets.readSheet(semana);
-    console.log(`🔍 [DEBUG] Datos crudos:`, data);
-    console.log(`🔍 [DEBUG] Transformando datos...`);
     const rutinas = transformSheetDataToRutinas(data);
-    console.log(`🔍 [DEBUG] Rutinas transformadas:`, rutinas);
 
     res.json({
       success: true,
@@ -248,7 +193,7 @@ app.get('/api/debug/rutinas/:semana', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ [DEBUG] Error completo:', error);
+    console.error('Error en debug:', error);
     res.status(500).json({
       success: false,
       message: 'Error en debug',
@@ -258,14 +203,10 @@ app.get('/api/debug/rutinas/:semana', async (req, res) => {
   }
 });
 
-const googleSheets = require('./config/googleSheets');
 app.get('/api/test-rutinas/:semana', async (req, res) => {
   try {
     const { semana } = req.params;
-    console.log(`🔍 Solicitando rutinas para: ${semana} (test público)`);
-    
     const data = await googleSheets.readSheet(semana);
-    console.log(`📊 Datos crudos de Google Sheets:`, data);
     
     if (!data || data.length === 0) {
       return res.status(404).json({
@@ -275,7 +216,6 @@ app.get('/api/test-rutinas/:semana', async (req, res) => {
     }
     
     const rutinas = transformSheetDataToRutinas(data);
-    console.log(`✅ Rutinas transformadas:`, rutinas);
     
     res.json({
       success: true,
@@ -283,7 +223,7 @@ app.get('/api/test-rutinas/:semana', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ Error detallado obteniendo rutinas:', error);
+    console.error('Error obteniendo rutinas:', error);
     res.status(500).json({
       success: false,
       message: 'Error al obtener las rutinas',
@@ -293,13 +233,10 @@ app.get('/api/test-rutinas/:semana', async (req, res) => {
   }
 });
 
-// OBTENER RUTINAS DE LA SEMANA
 app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
   try {
     const { semana } = req.params;
     const data = await googleSheets.readSheet(semana);
-    
-    
     const rutinas = transformSheetDataToRutinas(data);
     
     res.json({
@@ -316,7 +253,6 @@ app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
   }
 });
 
-// MARCAR EJERCICIO COMPLETADO
 app.post('/api/rutinas/completar', authenticateToken, async (req, res) => {
   try {
     const { semana, ejercicioId, setsCompletados } = req.body;
@@ -341,7 +277,6 @@ app.post('/api/rutinas/completar', authenticateToken, async (req, res) => {
   }
 });
 
-// GUARDAR NOTAS DEL CLIENTE
 app.post('/api/rutinas/notas', authenticateToken, async (req, res) => {
   try {
     const { semana, ejercicioId, notasCliente } = req.body;
@@ -364,7 +299,6 @@ app.post('/api/rutinas/notas', authenticateToken, async (req, res) => {
     });
   }
 });
-
 
 function transformSheetDataToRutinas(sheetData) {
   if (!sheetData || sheetData.length < 2) return [];
@@ -392,23 +326,16 @@ function transformSheetDataToRutinas(sheetData) {
   });
 }
 
-
-
 app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
   try {
     const { energia, sueno, estres, dolor_muscular, motivacion, apetito } = req.body;
-    const userId = req.user.userId; // ← USAR userId EN LUGAR DE id
+    const userId = req.user.userId;
 
-    console.log('📝 Datos wellness recibidos:', req.body);
-    console.log('👤 ID usuario:', userId);
-
-    // FUNCIÓN SEGURA PARA EVITAR undefined
     const safeValue = (value) => {
       if (value === undefined || value === null) return null;
       return parseInt(value) || 0;
     };
 
-    // Validar campos requeridos
     if (energia === undefined || sueno === undefined || estres === undefined || 
         dolor_muscular === undefined || motivacion === undefined) {
       return res.status(400).json({ 
@@ -419,7 +346,6 @@ app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
 
     const fecha = new Date().toISOString().split('T')[0];
 
-    // Verificar si ya existe registro para hoy
     const [existing] = await pool.execute(
       'SELECT id_wellness FROM Wellness WHERE id_usuario = ? AND fecha = ?',
       [userId, fecha]
@@ -432,7 +358,6 @@ app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
       });
     }
 
-    // USAR pool.execute EN LUGAR DE db.execute
     const [result] = await pool.execute(
       `INSERT INTO Wellness (id_usuario, fecha, energia, sueno, estres, dolor_muscular, motivacion, apetito) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -448,8 +373,6 @@ app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
       ]
     );
 
-    console.log('✅ Wellness guardado con ID:', result.insertId);
-
     res.json({ 
       success: true, 
       message: 'Encuesta wellness guardada correctamente',
@@ -457,7 +380,7 @@ app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error en wellness:', error);
+    console.error('Error en wellness:', error);
     res.status(500).json({ 
       success: false,
       error: 'Error interno del servidor',
@@ -466,8 +389,6 @@ app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
   }
 });
 
-
-// ENDPOINT PARA GUARDAR PROGRESO DE RUTINA
 app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) => {
   try {
     const { 
@@ -483,8 +404,7 @@ app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) 
     
     const userId = req.user.userId;
 
-    // Guardar en ProgresoRutinas
-    await pool.execute(
+    const [result] = await pool.execute(
       `INSERT INTO ProgresoRutinas 
        (id_usuario, id_ejercicio, nombre_ejercicio, fecha, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas)
        VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)`,
@@ -493,19 +413,19 @@ app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) 
 
     res.json({
       success: true,
-      message: 'Progreso del ejercicio guardado correctamente'
+      message: 'Progreso del ejercicio guardado correctamente',
+      id_progreso: result.insertId
     });
 
   } catch (error) {
     console.error('Error guardando progreso de ejercicio:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al guardar el progreso'
+      message: 'Error al guardar el progreso del ejercicio'
     });
   }
 });
 
-// ✅ ENDPOINT PARA REGISTRAR SESIÓN COMPLETADA
 app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) => {
   try {
     const { 
@@ -523,105 +443,99 @@ app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) =
 
     const porcentaje_completitud = (ejercicios_completados / total_ejercicios) * 100;
 
-    // Guardar en SesionesEntrenamiento
-    await pool.execute(
+    const [result] = await pool.execute(
       `INSERT INTO SesionesEntrenamiento 
-       (id_usuario, fecha, semana_rutina, total_ejercicios, ejercicios_completados, porcentaje_completitud, duracion_total_minutos, volumen_total, rpe_promedio, rir_promedio, notas_usuario, completada)
+       (id_usuario, fecha, semana_rutina, total_ejercicios, ejercicios_completados, 
+        porcentaje_completitud, duracion_total_minutos, volumen_total, rpe_promedio, 
+        rir_promedio, notas_usuario, completada)
        VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
-      [userId, semana_rutina, total_ejercicios, ejercicios_completados, porcentaje_completitud, duracion_total_minutos, volumen_total, rpe_promedio, rir_promedio, notas_usuario]
+      [
+        userId, 
+        semana_rutina, 
+        total_ejercicios, 
+        ejercicios_completados, 
+        porcentaje_completitud, 
+        duracion_total_minutos || null, 
+        volumen_total || null, 
+        rpe_promedio || null, 
+        rir_promedio || null, 
+        notas_usuario || 'Sesión completada'
+      ]
     );
 
     res.json({
       success: true,
-      message: 'Sesión de entrenamiento registrada correctamente'
+      message: 'Sesión de entrenamiento registrada correctamente',
+      id_sesion: result.insertId
     });
 
   } catch (error) {
     console.error('Error registrando sesión:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al registrar la sesión'
+      message: 'Error al registrar la sesión: ' + error.message
     });
   }
 });
 
-
-app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
+app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, res) => {
   try {
+    const { id_ejercicio, peso_utilizado, reps_logradas } = req.body;
     const userId = req.user.userId;
 
-    // Obtener sesiones de las últimas 5 semanas para el gráfico
-    const [sesionesSemanales] = await pool.execute(
-      `SELECT WEEK(fecha) as semana, COUNT(*) as cantidad
-       FROM SesionesEntrenamiento 
-       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 5 WEEK)
-       GROUP BY WEEK(fecha)
-       ORDER BY semana DESC
-       LIMIT 5`,
-      [userId]
-    );
+    if (!id_ejercicio) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'ID de ejercicio requerido' 
+      });
+    }
 
-    // Obtener datos de wellness para gráfico
-    const [wellnessData] = await pool.execute(
-      `SELECT energia, sueno, estres, dolor_muscular, motivacion
-       FROM Wellness 
-       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-       ORDER BY fecha ASC
-       LIMIT 7`,
-      [userId]
-    );
-
-    // Obtener estadísticas generales
-    const [estadisticas] = await pool.execute(
-      `SELECT 
-        COUNT(*) as total_sesiones,
-        AVG(porcentaje_completitud) as porcentaje_promedio,
-        AVG(rpe_promedio) as rpe_promedio,
-        AVG(rir_promedio) as rir_promedio
-       FROM SesionesEntrenamiento 
-       WHERE id_usuario = ?`,
-      [userId]
-    );
-
-    // Formatear datos para frontend
-    const datosProgreso = {
-      rutinasSemanales: sesionesSemanales.map(s => s.cantidad).reverse(),
-      wellnessPromedio: wellnessData.map(w => (w.energia + w.sueno + w.motivacion) / 3),
-      progresoPesos: [60, 62, 65, 63, 68], // Por implementar con datos reales
-      volumenEntrenamiento: [1200, 1350, 1420, 1380, 1500] // Por implementar con datos reales
+    const safeValue = (value) => {
+      if (value === undefined || value === null) return null;
+      if (typeof value === 'string' && value.trim() === '') return null;
+      return value;
     };
 
-    const datosEstadisticas = {
-      rutinasCompletadas: estadisticas[0]?.total_sesiones || 0,
-      totalRutinas: 20, // Esto podría venir de otra tabla
-      porcentajeCompletitud: estadisticas[0]?.porcentaje_promedio || 0,
-      mejorRPE: 8, // Por implementar con cálculo real
-      promedioRIR: estadisticas[0]?.rir_promedio || 0,
-      volumenSemanal: 45 // Por implementar con cálculo real
-    };
+    const pesoVal = safeValue(peso_utilizado);
+    const repsVal = safeValue(reps_logradas);
 
-    res.json({
-      success: true,
-      progressData: datosProgreso,
-      estadisticas: datosEstadisticas
+    const query = `
+      INSERT INTO ProgresoRutinas 
+      (id_usuario, id_ejercicio, peso_utilizado, reps_logradas, fecha)
+      VALUES (?, ?, ?, ?, NOW())
+      ON DUPLICATE KEY UPDATE 
+      peso_utilizado = VALUES(peso_utilizado), 
+      reps_logradas = VALUES(reps_logradas),
+      fecha = NOW()
+    `;
+
+    const [result] = await pool.execute(query, [
+      userId,
+      id_ejercicio,
+      pesoVal,
+      repsVal
+    ]);
+
+    res.json({ 
+      success: true, 
+      message: 'Progreso guardado correctamente',
+      id: result.insertId 
     });
 
   } catch (error) {
-    console.error('Error obteniendo datos de progreso:', error);
-    res.status(500).json({
+    console.error('Error en progreso:', error);
+    res.status(500).json({ 
       success: false,
-      message: 'Error al obtener los datos de progreso'
+      error: 'Error interno del servidor',
+      details: error.message
     });
   }
 });
 
-
 app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    console.log('📊 Solicitando datos reales para usuario:', userId);
 
-  
     const [sesionesSemanales] = await pool.execute(
       `SELECT WEEK(fecha, 1) as semana, COUNT(*) as cantidad
        FROM SesionesEntrenamiento 
@@ -632,7 +546,6 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       [userId]
     );
 
-
     const [wellnessData] = await pool.execute(
       `SELECT energia, sueno, estres, dolor_muscular, motivacion
        FROM Wellness 
@@ -640,7 +553,6 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
        ORDER BY fecha ASC`,
       [userId]
     );
-
 
     const [estadisticas] = await pool.execute(
       `SELECT 
@@ -653,13 +565,13 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
        WHERE id_usuario = ?`,
       [userId]
     );
+
     const [mejorRPE] = await pool.execute(
       `SELECT MAX(rpe_promedio) as mejor_rpe
        FROM SesionesEntrenamiento 
        WHERE id_usuario = ? AND rpe_promedio IS NOT NULL`,
       [userId]
     );
-
 
     const datosProgreso = {
       rutinasSemanales: sesionesSemanales.map(s => s.cantidad),
@@ -681,8 +593,6 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       volumenSemanal: Math.round(estadisticas[0]?.volumen_promedio || 0)
     };
 
-    console.log('✅ Datos reales enviados:', datosEstadisticas);
-
     res.json({
       success: true,
       progressData: datosProgreso,
@@ -690,7 +600,7 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error obteniendo datos de progreso:', error);
+    console.error('Error obteniendo datos de progreso:', error);
     res.status(500).json({
       success: false,
       message: 'Error al obtener los datos de progreso'
@@ -702,7 +612,6 @@ app.get('/api/progreso/resumen', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    
     const [sesionesCompletadas] = await pool.execute(
       `SELECT COUNT(*) as total, 
               AVG(porcentaje_completitud) as promedio_completitud,
@@ -713,7 +622,6 @@ app.get('/api/progreso/resumen', authenticateToken, async (req, res) => {
       [userId]
     );
 
- 
     const [wellnessPromedio] = await pool.execute(
       `SELECT AVG(energia) as energia, 
               AVG(sueno) as sueno,
@@ -724,296 +632,13 @@ app.get('/api/progreso/resumen', authenticateToken, async (req, res) => {
        WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`,
       [userId]
     );
+
     const [volumenSemanal] = await pool.execute(
       `SELECT COALESCE(SUM(volumen_total), 0) as volumen_total
        FROM SesionesEntrenamiento 
        WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`,
       [userId]
     );
-
-
-app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) => {
-  try {
-    const { 
-      id_ejercicio, 
-      nombre_ejercicio, 
-      sets_completados, 
-      reps_logradas, 
-      peso_utilizado, 
-      rir_final, 
-      rpe_final, 
-      notas 
-    } = req.body;
-    
-    const userId = req.user.userId;
-
-    console.log('💪 Guardando progreso de ejercicio:', { id_ejercicio, nombre_ejercicio, sets_completados });
-
-    // Guardar en ProgresoRutinas
-    const [result] = await pool.execute(
-      `INSERT INTO ProgresoRutinas 
-       (id_usuario, id_ejercicio, nombre_ejercicio, fecha, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas)
-       VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)`,
-      [userId, id_ejercicio, nombre_ejercicio, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas]
-    );
-
-    console.log('✅ Progreso guardado con ID:', result.insertId);
-
-    res.json({
-      success: true,
-      message: 'Progreso del ejercicio guardado correctamente',
-      id_progreso: result.insertId
-    });
-
-  } catch (error) {
-    console.error('❌ Error guardando progreso de ejercicio:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al guardar el progreso del ejercicio'
-    });
-  }
-});
-
-app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
-  try {
-    const { 
-      energia, 
-      sueno, 
-      estres, 
-      dolor_muscular, 
-      motivacion, 
-      apetito, 
-      notas 
-    } = req.body;
-
-
-app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
-  try {
-    const { energia, sueno, estres, dolor_muscular, motivacion, apetito } = req.body;
-    const id_usuario = req.user.id;
-
-    console.log('Datos wellness recibidos:', req.body);
-
-    if (energia === undefined || sueno === undefined || estres === undefined || 
-        dolor_muscular === undefined || motivacion === undefined) {
-      return res.status(400).json({ 
-        error: 'Todos los campos son requeridos' 
-      });
-    }
-    const safeValue = (value) => value !== undefined ? value : null;
-
-    const query = `
-      INSERT INTO Wellness (id_usuario, energia, sueno, estres, dolor_muscular, motivacion, apetito, fecha)
-      VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-    `;
-    
-    const [result] = await db.execute(query, [
-      id_usuario,
-      safeValue(energia),
-      safeValue(sueno),
-      safeValue(estres),
-      safeValue(dolor_muscular),
-      safeValue(motivacion),
-      safeValue(apetito) 
-    ]);
-
-    res.json({ 
-      success: true, 
-      message: 'Encuesta wellness guardada correctamente',
-      id: result.insertId 
-    });
-
-  } catch (error) {
-    console.error('Error en wellness:', error);
-    res.status(500).json({ 
-      error: 'Error interno del servidor',
-      details: error.message 
-    });
-  }
-});
-
-
-app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) => {
-  try {
-    const { 
-      semana_rutina, 
-      total_ejercicios, 
-      ejercicios_completados, 
-      duracion_total_minutos,
-      volumen_total,
-      rpe_promedio,
-      rir_promedio,
-      notas_usuario 
-    } = req.body;
-    
-    const userId = req.user.userId;
-
-    console.log('💪 Registrando sesión completada para usuario:', userId);
-
-    const porcentaje_completitud = total_ejercicios > 0 ? 
-      (ejercicios_completados / total_ejercicios) * 100 : 0;
-
-    // Guardar en SesionesEntrenamiento
-    const [result] = await pool.execute(
-      `INSERT INTO SesionesEntrenamiento 
-       (id_usuario, fecha, semana_rutina, total_ejercicios, ejercicios_completados, 
-        porcentaje_completitud, duracion_total_minutos, volumen_total, rpe_promedio, 
-        rir_promedio, notas_usuario, completada)
-       VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
-      [
-        userId, 
-        semana_rutina, 
-        total_ejercicios, 
-        ejercicios_completados, 
-        porcentaje_completitud, 
-        duracion_total_minutos || null, 
-        volumen_total || null, 
-        rpe_promedio || null, 
-        rir_promedio || null, 
-        notas_usuario || 'Sesión completada'
-      ]
-    );
-
-    console.log('✅ Sesión registrada con ID:', result.insertId);
-
-    res.json({
-      success: true,
-      message: 'Sesión de entrenamiento registrada correctamente',
-      id_sesion: result.insertId
-    });
-
-  } catch (error) {
-    console.error('❌ Error registrando sesión:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al registrar la sesión: ' + error.message
-    });
-  }
-});
-
-app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, res) => {
-  try {
-    const { id_ejercicio, peso_utilizado, reps_logradas } = req.body;
-    const userId = req.user.userId;
-
-    console.log('💪 Datos progreso recibidos:', req.body);
-    console.log('👤 ID usuario:', userId);
-
-    // Validación básica
-    if (!id_ejercicio) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'ID de ejercicio requerido' 
-      });
-    }
-    const safeValue = (value) => {
-      if (value === undefined || value === null) return null;
-      if (typeof value === 'string' && value.trim() === '') return null;
-      return value;
-    };
-
-    const pesoVal = safeValue(peso_utilizado);
-    const repsVal = safeValue(reps_logradas);
-
-    console.log('🔧 Valores procesados:', { pesoVal, repsVal });
-
-    const query = `
-      INSERT INTO ProgresoRutinas 
-      (id_usuario, id_ejercicio, peso_utilizado, reps_logradas, fecha, nombre_ejercicio)
-      VALUES (?, ?, ?, ?, NOW(), 'Ejercicio temporal')
-      ON DUPLICATE KEY UPDATE 
-      peso_utilizado = VALUES(peso_utilizado), 
-      reps_logradas = VALUES(reps_logradas),
-      fecha = NOW()
-    `;
-
-    const [result] = await pool.execute(query, [
-      userId,
-      id_ejercicio,
-      pesoVal,
-      repsVal
-    ]);
-
-    console.log('✅ Progreso guardado en BD. ID:', result.insertId);
-
-    res.json({ 
-      success: true, 
-      message: 'Progreso guardado correctamente',
-      id: result.insertId 
-    });
-
-  } catch (error) {
-    console.error('❌ Error en progreso:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Error interno del servidor',
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
-});
-    
-    const userId = req.user.userId;
-    const fecha = new Date().toISOString().split('T')[0];
-
-    console.log('📝 Registrando wellness para usuario:', userId, req.body);
-
-    if (energia === undefined || sueno === undefined || estres === undefined || 
-        dolor_muscular === undefined || motivacion === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: 'Faltan campos obligatorios en la encuesta wellness'
-      });
-    }
-
-    const apetitoValue = apetito !== undefined ? apetito : null;
-    const notasValue = notas !== undefined ? notas : null;
-
-    const [existing] = await pool.execute(
-      'SELECT id_wellness FROM Wellness WHERE id_usuario = ? AND fecha = ?',
-      [userId, fecha]
-    );
-
-    if (existing.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Ya completaste la encuesta wellness para hoy'
-      });
-    }
-
-   
-    const [result] = await pool.execute(
-      `INSERT INTO Wellness (id_usuario, fecha, energia, sueno, estres, dolor_muscular, motivacion, apetito, notas) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        userId, 
-        fecha, 
-        parseInt(energia), 
-        parseInt(sueno), 
-        parseInt(estres), 
-        parseInt(dolor_muscular), 
-        parseInt(motivacion), 
-        apetitoValue !== null ? parseInt(apetitoValue) : null, 
-        notasValue
-      ]
-    );
-
-    console.log('✅ Wellness guardado con ID:', result.insertId);
-
-    res.json({
-      success: true,
-      message: 'Encuesta wellness guardada correctamente',
-      id_wellness: result.insertId
-    });
-
-  } catch (error) {
-    console.error('❌ Error guardando wellness:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error interno del servidor al guardar wellness: ' + error.message
-    });
-  }
-});
 
     const resumen = {
       rutinasCompletadas: sesionesCompletadas[0]?.total || 0,
@@ -1023,7 +648,7 @@ app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, re
       wellnessPromedio: Math.round(
         (wellnessPromedio[0]?.energia + 
          wellnessPromedio[0]?.sueno + 
-         (10 - wellnessPromedio[0]?.estres) + // Invertir estrés
+         (10 - wellnessPromedio[0]?.estres) +
          wellnessPromedio[0]?.motivacion) / 4
       ) || 0,
       volumenSemanal: volumenSemanal[0]?.volumen_total || 0
@@ -1047,7 +672,6 @@ app.get('/api/progreso/graficos', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    
     const [rutinasSemanales] = await pool.execute(
       `SELECT YEARWEEK(fecha) as semana, COUNT(*) as cantidad
        FROM SesionesEntrenamiento 
@@ -1067,7 +691,6 @@ app.get('/api/progreso/graficos', authenticateToken, async (req, res) => {
       [userId]
     );
 
-    // Datos de progreso de pesos (últimos 30 días)
     const [progresoPesos] = await pool.execute(
       `SELECT fecha, AVG(CAST(REPLACE(peso_utilizado, 'kg', '') AS DECIMAL)) as peso_promedio
        FROM ProgresoRutinas 
@@ -1084,7 +707,7 @@ app.get('/api/progreso/graficos', authenticateToken, async (req, res) => {
         Math.round((w.energia + w.sueno + (10 - w.estres) + w.motivacion) / 4)
       ).reverse(),
       progresoPesos: progresoPesos.map(p => p.peso_promedio || 0).reverse(),
-      volumenEntrenamiento: rutinasSemanales.map(r => r.cantidad * 100).reverse() // Ejemplo simplificado
+      volumenEntrenamiento: rutinasSemanales.map(r => r.cantidad * 100).reverse()
     };
 
     res.json({
@@ -1100,36 +723,7 @@ app.get('/api/progreso/graficos', authenticateToken, async (req, res) => {
     });
   }
 });
-// PROGRESO - Registrar sesión de entrenamiento completada
-app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) => {
-  try {
-    const { fecha, semanaRutina, ejerciciosCompletados, totalEjercicios, duracionMinutos, notas } = req.body;
-    const userId = req.user.userId;
 
-    const porcentajeCompletitud = (ejerciciosCompletados / totalEjercicios) * 100;
-
-    await pool.execute(
-      `INSERT INTO SesionesEntrenamiento 
-       (id_usuario, fecha, semana_rutina, total_ejercicios, ejercicios_completados, porcentaje_completitud, duracion_total_minutos, notas_usuario, completada) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, true)`,
-      [userId, fecha, semanaRutina, totalEjercicios, ejerciciosCompletados, porcentajeCompletitud, duracionMinutos, notas]
-    );
-
-    res.json({
-      success: true,
-      message: 'Sesión de entrenamiento registrada correctamente'
-    });
-
-  } catch (error) {
-    console.error('Error registrando sesión:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al registrar la sesión de entrenamiento'
-    });
-  }
-});
-
-// PERFIL DEL USUARIO - OBTENER
 app.get('/api/user/profile', authenticateToken, async (req, res) => {
   try {
     const [users] = await pool.execute(
@@ -1168,12 +762,10 @@ app.get('/api/user/profile', authenticateToken, async (req, res) => {
   }
 });
 
-// PERFIL DEL USUARIO - ACTUALIZAR
 app.put('/api/user/profile', authenticateToken, async (req, res) => {
   try {
     const { nombre, apellido, edad, sexo, peso_actual, altura } = req.body;
 
-    // Validaciones básicas
     if (!nombre || !apellido || !edad || !sexo) {
       return res.status(400).json({
         success: false,
@@ -1207,7 +799,6 @@ app.post('/api/progreso/ejercicio', authenticateToken, async (req, res) => {
     const { id_ejercicio, nombre_ejercicio, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas } = req.body;
     const userId = req.user.userId;
 
-    // Insertar en ProgresoRutinas
     await pool.execute(
       `INSERT INTO ProgresoRutinas (id_usuario, id_ejercicio, nombre_ejercicio, fecha, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas)
        VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)`,
@@ -1228,7 +819,6 @@ app.post('/api/progreso/ejercicio', authenticateToken, async (req, res) => {
   }
 });
 
-// Registrar sesión de entrenamiento
 app.post('/api/progreso/sesion', authenticateToken, async (req, res) => {
   try {
     const { semana_rutina, total_ejercicios, ejercicios_completados, duracion_total_minutos, volumen_total, rpe_promedio, rir_promedio, notas_usuario } = req.body;
@@ -1236,7 +826,6 @@ app.post('/api/progreso/sesion', authenticateToken, async (req, res) => {
 
     const porcentaje_completitud = (ejercicios_completados / total_ejercicios) * 100;
 
-    // Insertar en SesionesEntrenamiento
     await pool.execute(
       `INSERT INTO SesionesEntrenamiento (id_usuario, fecha, semana_rutina, total_ejercicios, ejercicios_completados, porcentaje_completitud, duracion_total_minutos, volumen_total, rpe_promedio, rir_promedio, notas_usuario, completada)
        VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -1257,74 +846,6 @@ app.post('/api/progreso/sesion', authenticateToken, async (req, res) => {
   }
 });
 
-// Obtener resumen de progreso para el usuario
-app.get('/api/progreso/resumen', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-
-    // Obtener estadísticas de sesiones
-    const [sesiones] = await pool.execute(
-      `SELECT COUNT(*) as total_sesiones, 
-              AVG(porcentaje_completitud) as avg_completitud,
-              AVG(rpe_promedio) as avg_rpe,
-              AVG(rir_promedio) as avg_rir
-       FROM SesionesEntrenamiento 
-       WHERE id_usuario = ?`,
-      [userId]
-    );
-
-    // Obtener sesiones de la última semana para gráfico
-    const [sesionesSemanales] = await pool.execute(
-      `SELECT DATE_FORMAT(fecha, '%Y-%u') as semana, COUNT(*) as cantidad
-       FROM SesionesEntrenamiento 
-       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 4 WEEK)
-       GROUP BY semana
-       ORDER BY semana DESC
-       LIMIT 5`,
-      [userId]
-    );
-
-    // Obtener datos de wellness para gráfico
-    const [wellnessData] = await pool.execute(
-      `SELECT AVG(energia) as energia, AVG(sueno) as sueno, AVG(estres) as estres, AVG(dolor_muscular) as dolor, AVG(motivacion) as motivacion
-       FROM Wellness 
-       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-       GROUP BY fecha
-       ORDER BY fecha DESC
-       LIMIT 7`,
-      [userId]
-    );
-
-    // Formatear datos para gráficos
-    const rutinasSemanales = sesionesSemanales.map(s => s.cantidad).reverse();
-    const wellnessPromedio = wellnessData.map(w => (w.energia + w.sueno + w.motivacion) / 3).reverse();
-
-    res.json({
-      success: true,
-      resumen: {
-        rutinasCompletadas: sesiones[0].total_sesiones,
-        totalRutinas: 20, // Este valor podría venir de otra parte
-        porcentajeCompletitud: sesiones[0].avg_completitud || 0,
-        mejorRPE: 8, // Podrías calcularlo
-        promedioRIR: sesiones[0].avg_rir || 0,
-        volumenSemanal: 45 // Podrías calcularlo
-      },
-      progressData: {
-        rutinasSemanales,
-        wellnessPromedio,
-        // Agregar más datos según necesites
-      }
-    });
-
-  } catch (error) {
-    console.error('Error obteniendo resumen de progreso:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener el resumen de progreso'
-    });
-  }
-});
-
 app.post('/api/auth/register-coach', async (req, res) => {
   try {
     const { nombre, apellido, email, contraseña, edad, sexo, especialidad, experiencia } = req.body;
@@ -1336,7 +857,6 @@ app.post('/api/auth/register-coach', async (req, res) => {
       });
     }
 
-    // Verificar si el email ya existe
     const [existingCoaches] = await pool.execute(
       'SELECT id_coach FROM Coach WHERE email = ?',
       [email]
@@ -1387,36 +907,14 @@ app.post('/api/auth/register-coach', async (req, res) => {
   }
 });
 
-app.get('/api/health', async (req, res) => {
-  try {
-    const dbStatus = await testConnection();
-    const sheetsHealth = await googleSheets.healthCheck();
-    
-    res.json({
-      message: '🚀 ¡Backend funcionando!',
-      database: dbStatus ? 'Conectado' : 'Desconectado',
-      google_sheets: sheetsHealth,
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || 'development'
-    });
-  } catch (error) {
-    res.status(500).json({
-      message: '⚠️ Backend con problemas',
-      error: error.message
-    });
-  }
-});
-
-// Iniciar servidor
 const startServer = async () => {
   try {
     await createTables();
     app.listen(PORT, () => {
-      console.log(`✅ Servidor corriendo en http://localhost:${PORT}`);
-      console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+      console.log(`Servidor corriendo en http://localhost:${PORT}`);
     });
   } catch (error) {
-    console.error('❌ Error iniciando servidor:', error);
+    console.error('Error iniciando servidor:', error);
   }
 };
 
