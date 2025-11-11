@@ -31,11 +31,11 @@ export default function ProgresoScreen() {
     volumenSemanal: 0
   });
 
- const wellnessQuestions = [
+const wellnessQuestions = [
   { id: "energia", pregunta: "⚡ Nivel de energía", escala: "1 (Agotado) - 10 (Energético)" },
   { id: "sueno", pregunta: "💤 Calidad del sueño", escala: "1 (Malo) - 10 (Excelente)" },
   { id: "estres", pregunta: "😥 Nivel de estrés", escala: "1 (Tranquilo) - 10 (Muy estresado)" },
-  { id: "dolor_muscular", pregunta: "💪 Dolor muscular", escala: "1 (Sin dolor) - 10 (Dolor intenso)" },
+  { id: "dolor_muscular", pregunta: "💪 Dolor muscular", escala: "1 (Sin dolor) - 10 (Dolor intenso)" }, 
   { id: "motivacion", pregunta: "🎯 Motivación para entrenar", escala: "1 (Nada) - 10 (Muy motivado)" },
   { id: "apetito", pregunta: "🍽️ Nivel de apetito", escala: "1 (Nada) - 10 (Muy hambriento)" }
 ];
@@ -106,7 +106,7 @@ const enviarWellness = async () => {
   try {
     const token = await AsyncStorage.getItem('userToken');
     
-    
+    // Verificar que todas las preguntas tengan respuesta
     const respuestasCompletas = wellnessQuestions.every(q => 
       wellnessData[q.id] !== undefined && wellnessData[q.id] !== null
     );
@@ -116,48 +116,16 @@ const enviarWellness = async () => {
       return;
     }
 
-    
     const datosWellness = {
       energia: wellnessData.energia || 5,
       sueno: wellnessData.sueno || 5,
       estres: wellnessData.estres || 5,
-      dolor_muscular: wellnessData.dolor || 5, 
+      dolor_muscular: wellnessData.dolor_muscular || 5, 
       motivacion: wellnessData.motivacion || 5,
-      apetito: wellnessData.apetito || null,
-      notas: 'Encuesta completada desde la app - ' + new Date().toLocaleDateString()
+      apetito: wellnessData.apetito || null
     };
 
     console.log('📤 Enviando wellness corregido:', datosWellness);
-
-
-    const guardarWellness = async (datosWellness) => {
-  try {
-    // Asegurar que ningún campo sea undefined
-    const payload = {
-      energia: parseInt(datosWellness.energia) || 0,
-      sueno: parseInt(datosWellness.sueno) || 0,
-      estres: parseInt(datosWellness.estres) || 0,
-      dolor_muscular: parseInt(datosWellness.dolor) || 0,
-      motivacion: parseInt(datosWellness.motivacion) || 0,
-      apetito: parseInt(datosWellness.apetito) || null, // Si no existe, envía null
-    };
-
-    console.log('Payload Wellness garantizado:', payload);
-
-    const response = await fetch('https://rayostrength-production.up.railway.app/api/wellness/registrar', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userToken}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    // ... resto del código igual
-  } catch (error) {
-    // ... manejo de errores
-  }
-};
 
     const response = await fetch(`${BASE_URL}/api/wellness/registrar`, {
       method: 'POST',
@@ -168,19 +136,29 @@ const enviarWellness = async () => {
       body: JSON.stringify(datosWellness),
     });
 
-    const result = await response.json();
+    const responseText = await response.text();
+    console.log('🔍 Respuesta cruda del servidor:', responseText);
+
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ Error parseando JSON:', parseError);
+      Alert.alert("Error", "Respuesta inválida del servidor");
+      return;
+    }
 
     if (result.success) {
       Alert.alert("✅ Encuesta guardada", "Tu estado wellness ha sido registrado correctamente");
       setWellnessData({});
       cargarDatosProgreso();
     } else {
-      Alert.alert("Error", result.message || "No se pudo guardar la encuesta");
+      Alert.alert("Error", result.message || result.error || "No se pudo guardar la encuesta");
     }
     
   } catch (error) {
-    console.error('Error enviando wellness:', error);
-    Alert.alert("Error de conexión", "No se pudo conectar con el servidor");
+    console.error('❌ Error enviando wellness:', error);
+    Alert.alert("Error de conexión", "No se pudo conectar con el servidor: " + error.message);
   }
 };
 

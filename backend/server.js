@@ -9,6 +9,42 @@ const { pool, createTables, testConnection } = require('./config/database');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Función de diagnóstico
+const probarEndpoints = async () => {
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    console.log('🔍 Token:', token ? '✅ Presente' : '❌ Ausente');
+    
+    // Probar wellness
+    const testData = {
+      energia: 8,
+      sueno: 7,
+      estres: 3,
+      dolor_muscular: 5,
+      motivacion: 9,
+      apetito: 7
+    };
+    
+    console.log('🧪 Probando endpoint wellness...');
+    const response = await fetch(`${BASE_URL}/api/wellness/registrar`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(testData),
+    });
+    
+    const text = await response.text();
+    console.log('📋 Respuesta wellness:', text);
+    
+  } catch (error) {
+    console.error('❌ Error en prueba:', error);
+  }
+};
+
+
+
 const safeSQLValue = (value) => {
   if (value === undefined) return null;
   if (value === '') return null;
@@ -357,11 +393,31 @@ function transformSheetDataToRutinas(sheetData) {
 }
 
 
-// WELLNESS - Registrar encuesta diaria
+
 app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
   try {
-    const { fecha, respuestas } = req.body;
-    const userId = req.user.userId;
+    const { energia, sueno, estres, dolor_muscular, motivacion, apetito } = req.body;
+    const userId = req.user.userId; // ← USAR userId EN LUGAR DE id
+
+    console.log('📝 Datos wellness recibidos:', req.body);
+    console.log('👤 ID usuario:', userId);
+
+    // FUNCIÓN SEGURA PARA EVITAR undefined
+    const safeValue = (value) => {
+      if (value === undefined || value === null) return null;
+      return parseInt(value) || 0;
+    };
+
+    // Validar campos requeridos
+    if (energia === undefined || sueno === undefined || estres === undefined || 
+        dolor_muscular === undefined || motivacion === undefined) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Todos los campos son requeridos' 
+      });
+    }
+
+    const fecha = new Date().toISOString().split('T')[0];
 
     // Verificar si ya existe registro para hoy
     const [existing] = await pool.execute(
@@ -376,38 +432,42 @@ app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
       });
     }
 
-    // Insertar nuevo registro
-    await pool.execute(
-      `INSERT INTO Wellness (id_usuario, fecha, energia, sueno, estres, dolor_muscular, motivacion, apetito, notas) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    // USAR pool.execute EN LUGAR DE db.execute
+    const [result] = await pool.execute(
+      `INSERT INTO Wellness (id_usuario, fecha, energia, sueno, estres, dolor_muscular, motivacion, apetito) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId, 
         fecha,
-        respuestas.energia,
-        respuestas.sueno, 
-        respuestas.estres,
-        respuestas.dolor,
-        respuestas.motivacion,
-        respuestas.apetito || null,
-        respuestas.notas || null
+        safeValue(energia),
+        safeValue(sueno), 
+        safeValue(estres),
+        safeValue(dolor_muscular),
+        safeValue(motivacion),
+        safeValue(apetito)
       ]
     );
 
-    res.json({
-      success: true,
-      message: 'Encuesta wellness guardada correctamente'
+    console.log('✅ Wellness guardado con ID:', result.insertId);
+
+    res.json({ 
+      success: true, 
+      message: 'Encuesta wellness guardada correctamente',
+      id: result.insertId 
     });
 
   } catch (error) {
-    console.error('Error guardando wellness:', error);
-    res.status(500).json({
+    console.error('❌ Error en wellness:', error);
+    res.status(500).json({ 
       success: false,
-      message: 'Error al guardar la encuesta wellness'
+      error: 'Error interno del servidor',
+      details: error.message 
     });
   }
 });
 
-// ✅ ENDPOINT PARA GUARDAR PROGRESO DE RUTINA
+
+// ENDPOINT PARA GUARDAR PROGRESO DE RUTINA
 app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) => {
   try {
     const { 
@@ -834,16 +894,22 @@ app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) =
 app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, res) => {
   try {
     const { id_ejercicio, peso_utilizado, reps_logradas } = req.body;
-    const id_usuario = req.user.id;
+    const userId = req.user.userId; // ← USAR userId EN LUGAR DE id
 
-    console.log('Datos progreso recibidos:', req.body);
+    console.log('💪 Datos progreso recibidos:', req.body);
 
     if (!id_ejercicio) {
-      return res.status(400).json({ error: 'ID de ejercicio requerido' });
+      return res.status(400).json({ 
+        success: false,
+        error: 'ID de ejercicio requerido' 
+      });
     }
 
-    // Función helper para convertir undefined a null
-    const safeValue = (value) => value !== undefined ? value : null;
+    // ✅ FUNCIÓN SEGURA
+    const safeValue = (value) => {
+      if (value === undefined || value === null) return null;
+      return value;
+    };
 
     const query = `
       INSERT INTO ProgresoRutinas (id_usuario, id_ejercicio, peso_utilizado, reps_logradas, fecha)
@@ -853,8 +919,9 @@ app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, re
       reps_logradas = VALUES(reps_logradas)
     `;
     
-    const [result] = await db.execute(query, [
-      id_usuario,
+    // ✅ USAR pool.execute Y safeValue
+    const [result] = await pool.execute(query, [
+      userId,
       id_ejercicio,
       safeValue(peso_utilizado),
       safeValue(reps_logradas)
@@ -867,8 +934,9 @@ app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, re
     });
 
   } catch (error) {
-    console.error('Error en progreso:', error);
+    console.error('❌ Error en progreso:', error);
     res.status(500).json({ 
+      success: false,
       error: 'Error interno del servidor',
       details: error.message 
     });
