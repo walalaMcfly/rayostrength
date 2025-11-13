@@ -29,45 +29,57 @@ export default function Login() {
   const [errors, setErrors] = useState({});
 
 
-  const handleLogin = async () => {
-    try {
-      if (!form.email || !form.password) {
-        Alert.alert("Error", "Por favor completa todos los campos");
-        return;
-      }
-
-      setLoading(true);
-      console.log('🔄 Iniciando login...');
-      
-      const response = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: form.email,
-          contraseña: form.password
-        }),
-      });
-
-      console.log('📨 Status de respuesta:', response.status);
-      
-      const data = await response.json();
-      console.log('📨 Respuesta completa del login:', data);
-
-      if (data.success) {
-        await AsyncStorage.setItem('userToken', data.token);
-        console.log('✅ Token guardado exitosamente en AsyncStorage');
-        console.log('✅ Token:', data.token.substring(0, 20) + '...');
-        router.replace('/(drawer)/(tabs)/rutinas'); 
-      }
-    } catch (error) {
-      console.error('❌ Error completo en login:', error);
-      Alert.alert("Error", "No se pudo conectar al servidor: " + error.message);
-    } finally {
-      setLoading(false);
+const handleLogin = async () => {
+  try {
+    if (!form.email || !form.password) {
+      Alert.alert("Error", "Por favor completa todos los campos");
+      return;
     }
-  };
+
+    setLoading(true);
+    console.log('Iniciando login...');
+    
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: form.email,
+        contraseña: form.password
+      }),
+    });
+
+    console.log('📨 Status de respuesta:', response.status);
+    
+    const data = await response.json();
+    console.log('📨 Respuesta completa del login:', data);
+
+    if (data.success) {
+      // Guardar token y datos del usuario (que ahora incluye el rol)
+      await AsyncStorage.setItem('userToken', data.token);
+      await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+      
+      console.log('Login exitoso. Rol:', data.user.role);
+      
+      // Redirigir según el rol
+      if (data.user.role === 'coach') {
+        console.log(' Redirigiendo a área de coach');
+        router.replace('/(coach)');
+      } else {
+        console.log('👤 Redirigiendo a área de cliente');
+        router.replace('/(drawer)/(tabs)/rutinas');
+      }
+    } else {
+      Alert.alert("Error", data.message || "Credenciales incorrectas");
+    }
+  } catch (error) {
+    console.error(' Error completo en login:', error);
+    Alert.alert("Error", "No se pudo conectar al servidor: " + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   
   const handleChange = (name, value) => {

@@ -46,7 +46,21 @@ const authenticateToken = (req, res, next) => {
         message: 'Token inválido o expirado'
       });
     }
-    req.user = user;
+    
+    if (user.role === 'coach') {
+      req.user = {
+        coachId: user.userId,
+        email: user.email,
+        role: user.role
+      };
+    } else {
+      req.user = {
+        userId: user.userId,
+        email: user.email,
+        role: user.role
+      };
+    }
+    
     next();
   });
 };
@@ -124,19 +138,39 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
+    let user = null;
+    let role = 'user';
+    let table = 'Usuario';
+
+    // Buscar en la tabla Usuario
     const [users] = await pool.execute(
       'SELECT * FROM Usuario WHERE email = ?',
       [email]
     );
 
-    if (users.length === 0) {
+    if (users.length > 0) {
+      user = users[0];
+      role = 'user';
+    } else {
+      // Si no se encuentra en Usuario, buscar en Coach
+      const [coaches] = await pool.execute(
+        'SELECT * FROM Coach WHERE email = ?',
+        [email]
+      );
+
+      if (coaches.length > 0) {
+        user = coaches[0];
+        role = 'coach';
+        table = 'Coach';
+      }
+    }
+
+    if (!user) {
       return res.status(401).json({
         success: false,
         message: 'Email o contraseña incorrectos'
       });
     }
-
-    const user = users[0];
 
     const validPassword = await bcrypt.compare(contraseña, user.contraseña);
     if (!validPassword) {
@@ -146,27 +180,64 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
+    // Preparar el payload del token según el rol
+    let tokenPayload;
+    if (role === 'user') {
+      tokenPayload = { 
+        userId: user.id_usuario, 
+        email: user.email, 
+        role: 'user' 
+      };
+    } else {
+      tokenPayload = { 
+        coachId: user.id_coach, 
+        email: user.email, 
+        role: 'coach' 
+      };
+    }
+
     const token = jwt.sign(
-      { userId: user.id_usuario, email: user.email },
+      tokenPayload,
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    res.json({
-      success: true,
-      message: 'Login exitoso',
-      token,
-      user: {
-        id_usuario: user.id_usuario,
-        nombre: user.nombre,
-        apellido: user.apellido,
-        email: user.email,
-        edad: user.edad,
-        sexo: user.sexo,
-        peso_actual: user.peso_actual,
-        altura: user.altura
-      }
-    });
+    // Respuesta según el rol
+    if (role === 'user') {
+      res.json({
+        success: true,
+        message: 'Login exitoso',
+        token,
+        user: {
+          id_usuario: user.id_usuario,
+          nombre: user.nombre,
+          apellido: user.apellido,
+          email: user.email,
+          edad: user.edad,
+          sexo: user.sexo,
+          peso_actual: user.peso_actual,
+          altura: user.altura,
+          role: 'user'
+        }
+      });
+    } else {
+      res.json({
+        success: true,
+        message: 'Login exitoso',
+        token,
+        user: {
+          id_coach: user.id_coach,
+          nombre: user.nombre,
+          apellido: user.apellido,
+          email: user.email,
+          edad: user.edad,
+          sexo: user.sexo,
+          especialidad: user.especialidad,
+          experiencia: user.experiencia,
+          role: 'coach'
+        }
+      });
+    }
 
   } catch (error) {
     console.error('Error en login:', error);
@@ -856,6 +927,319 @@ app.post('/api/auth/register-coach', async (req, res) => {
         message: 'Nombre, apellido, email, contraseña y especialidad son requeridos'
       });
     }
+
+  app.get('/api/coach/clientes', authenticateToken, async (req, res) => {
+  try {
+    const coachId = req.user.coachId; 
+
+    // Verificar que el usuario es un coach
+    const [coaches] = await pool.execute(
+      'SELECT id_coach FROM Coach WHERE id_coach = ?',
+      [coachId]
+    );
+
+    if (coaches.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'Acceso denegado. Solo para coaches.'
+      });
+    }
+
+    // Obtener clientes asignados al coach
+    const [clientes] = await pool.execute(
+      `SELECT 
+        u.id_usuario, 
+        u.nombre, 
+        u.apellido, 
+        u.email,
+        u.edad,
+        u.sexo,
+        u.peso_actual,
+        u.altura,
+        cu.fecha_inicio,
+        (SELECT COUNT(*) FROM SesionesEntrenamiento se WHERE se.id_usuario = u.id_usuario AND se.completada = true) as rutinas_completadas,
+        (SELECT AVG((w.energia + w.sueno + w.motivacion) / 3) FROM Wellness w WHERE w.id_usuario = u.id_usuario AND w.fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)) as wellness_promedio,
+        (SELECT MAX(fecha) FROM SesionesEntrenamiento se WHERE se.id_usuario = u.id_usuario) as ultima_sesion
+       FROM Usuario u
+       INNER JOIN CoachUsuario cu ON u.id_usuario = cu.id_usuario
+       WHERE cu.id_coach = ? AND cu.activo = true`,
+      [coachId]
+    );
+
+    // Obtener estadísticas generales
+    const [estadisticas] = await pool.execute(
+      `SELECT 
+        COUNT(*) as total_clientes,
+        SUM((SELECT COUNT(*) FROM SesionesEntrenamiento se WHERE se.id_usuario = u.id_usuario AND se.fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY))) as rutinas_completadas_semana,
+        AVG((SELECT AVG((w.energia + w.sueno + w.motivacion) / 3) FROM Wellness w WHERE w.id_usuario = u.id_usuario AND w.fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY))) as promedio_wellness
+       FROM Usuario u
+       INNER JOIN CoachUsuario cu ON u.id_usuario = cu.id_usuario
+       WHERE cu.id_coach = ? AND cu.activo = true`,
+      [coachId]
+    );
+
+    res.json({
+      success: true,
+      clientes: clientes,
+      estadisticas: {
+        totalClientes: estadisticas[0]?.total_clientes || 0,
+        clientesActivos: clientes.length,
+        rutinasCompletadas: estadisticas[0]?.rutinas_completadas_semana || 0,
+        promedioWellness: Math.round(estadisticas[0]?.promedio_wellness || 0)
+      }
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo clientes del coach:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+
+app.get('/api/coach/cliente/:id/progreso', authenticateToken, async (req, res) => {
+  try {
+    const coachId = req.user.coachId;
+    const clienteId = req.params.id;
+
+    // Verificar que el coach tiene acceso a este cliente
+    const [acceso] = await pool.execute(
+      'SELECT id_relacion FROM CoachUsuario WHERE id_coach = ? AND id_usuario = ? AND activo = true',
+      [coachId, clienteId]
+    );
+
+    if (acceso.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes acceso a este cliente'
+      });
+    }
+
+    // Obtener datos de progreso del cliente
+    const [progreso] = await pool.execute(
+      `SELECT 
+        COUNT(*) as rutinas_completadas,
+        AVG(porcentaje_completitud) as porcentaje_completitud,
+        AVG(COALESCE(rpe_promedio, 0)) as rpe_promedio,
+        AVG(COALESCE(rir_promedio, 0)) as rir_promedio,
+        AVG(COALESCE(volumen_total, 0)) as volumen_promedio
+       FROM SesionesEntrenamiento 
+       WHERE id_usuario = ?`,
+      [clienteId]
+    );
+
+    // Obtener rutinas semanales (últimas 5 semanas)
+    const [rutinasSemanales] = await pool.execute(
+      `SELECT WEEK(fecha, 1) as semana, COUNT(*) as cantidad
+       FROM SesionesEntrenamiento 
+       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 5 WEEK)
+       GROUP BY WEEK(fecha, 1)
+       ORDER BY semana ASC
+       LIMIT 5`,
+      [clienteId]
+    );
+
+    res.json({
+      success: true,
+      progreso: {
+        rutinasCompletadas: progreso[0]?.rutinas_completadas || 0,
+        porcentajeCompletitud: Math.round(progreso[0]?.porcentaje_completitud || 0),
+        rpePromedio: Math.round(progreso[0]?.rpe_promedio || 0),
+        rirPromedio: Math.round(progreso[0]?.rir_promedio || 0),
+        volumenSemanal: Math.round(progreso[0]?.volumen_promedio || 0),
+        rutinasSemanales: rutinasSemanales.map(r => r.cantidad)
+      }
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo progreso del cliente:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+app.get('/api/coach/cliente/:id/wellness', authenticateToken, async (req, res) => {
+  try {
+    const coachId = req.user.coachId;
+    const clienteId = req.params.id;
+
+    // Verificar acceso
+    const [acceso] = await pool.execute(
+      'SELECT id_relacion FROM CoachUsuario WHERE id_coach = ? AND id_usuario = ? AND activo = true',
+      [coachId, clienteId]
+    );
+
+    if (acceso.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes acceso a este cliente'
+      });
+    }
+
+    // Obtener datos de wellness de los últimos 7 días
+    const [wellness] = await pool.execute(
+      `SELECT fecha, energia, sueno, estres, dolor_muscular, motivacion, apetito
+       FROM Wellness 
+       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+       ORDER BY fecha ASC`,
+      [clienteId]
+    );
+
+    res.json({
+      success: true,
+      wellness: wellness
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo wellness del cliente:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+app.post('/api/coach/notas', authenticateToken, async (req, res) => {
+  try {
+    const coachId = req.user.coachId;
+    const { id_cliente, mensaje } = req.body;
+
+    // Verificar acceso
+    const [acceso] = await pool.execute(
+      'SELECT id_relacion FROM CoachUsuario WHERE id_coach = ? AND id_usuario = ? AND activo = true',
+      [coachId, id_cliente]
+    );
+
+    if (acceso.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes acceso a este cliente'
+      });
+    }
+
+    // Insertar nota
+    const [result] = await pool.execute(
+      `INSERT INTO NotasCoach (id_coach, id_cliente, mensaje) 
+       VALUES (?, ?, ?)`,
+      [coachId, id_cliente, mensaje]
+    );
+
+    res.json({
+      success: true,
+      message: 'Nota enviada correctamente',
+      id_nota: result.insertId
+    });
+
+  } catch (error) {
+    console.error('Error enviando nota:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+app.post('/api/coach/clientes', authenticateToken, async (req, res) => {
+  try {
+    const coachId = req.user.coachId;
+    const { email } = req.body;
+
+    // Buscar usuario por email
+    const [usuarios] = await pool.execute(
+      'SELECT id_usuario FROM Usuario WHERE email = ?',
+      [email]
+    );
+
+    if (usuarios.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No se encontró un usuario con ese email'
+      });
+    }
+
+    const usuarioId = usuarios[0].id_usuario;
+
+    // Verificar si ya está asignado
+    const [asignacion] = await pool.execute(
+      'SELECT id_relacion FROM CoachUsuario WHERE id_coach = ? AND id_usuario = ?',
+      [coachId, usuarioId]
+    );
+
+    if (asignacion.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Este usuario ya es tu cliente'
+      });
+    }
+
+    // Asignar cliente
+    await pool.execute(
+      `INSERT INTO CoachUsuario (id_coach, id_usuario, fecha_inicio) 
+       VALUES (?, ?, CURDATE())`,
+      [coachId, usuarioId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Cliente agregado correctamente'
+    });
+
+  } catch (error) {
+    console.error('Error agregando cliente:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+
+app.get('/api/coach/cliente/:id/notas', authenticateToken, async (req, res) => {
+  try {
+    const coachId = req.user.coachId;
+    const clienteId = req.params.id;
+
+    // Verificar acceso
+    const [acceso] = await pool.execute(
+      'SELECT id_relacion FROM CoachUsuario WHERE id_coach = ? AND id_usuario = ? AND activo = true',
+      [coachId, clienteId]
+    );
+
+    if (acceso.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes acceso a este cliente'
+      });
+    }
+
+    // Obtener notas
+    const [notas] = await pool.execute(
+      `SELECT id_nota, mensaje, fecha_creacion, leido
+       FROM NotasCoach 
+       WHERE id_coach = ? AND id_cliente = ?
+       ORDER BY fecha_creacion DESC`,
+      [coachId, clienteId]
+    );
+
+    res.json({
+      success: true,
+      notas: notas
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo notas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+
 
     const [existingCoaches] = await pool.execute(
       'SELECT id_coach FROM Coach WHERE email = ?',
