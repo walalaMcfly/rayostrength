@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router";
 import { useState } from "react";
@@ -18,7 +19,7 @@ const API_URL = 'https://rayostrength-production.up.railway.app/api';
 
 export default function Login() {
   const router = useRouter();
-  
+  const [showPassword, setShowPassword] = useState(false);
 
   const [form, setForm] = useState({
     email: "",
@@ -37,7 +38,7 @@ const handleLogin = async () => {
     }
 
     setLoading(true);
-    console.log('Iniciando login...');
+    console.log(' Iniciando login...');
     
     const response = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
@@ -112,15 +113,27 @@ const handleLogin = async () => {
             value={form.email}
             onChangeText={(value) => handleChange('email', value)}
           />
-          
-          <TextInput
-            style={styles.input}
-            placeholder="Contraseña"
-            placeholderTextColor="#9ca3af"
-            secureTextEntry
-            value={form.password}
-            onChangeText={(value) => handleChange('password', value)}
-          />
+
+          <View style={styles.passwordContainer}>
+            <TextInput
+             style={styles.passwordInput}
+                placeholder="Contraseña"
+                placeholderTextColor="#9ca3af"
+                secureTextEntry={!showPassword}
+                value={form.password}
+                onChangeText={(value) => handleChange('password', value)}
+              />
+              <TouchableOpacity 
+                style={styles.eyeButton}
+                onPress={() => setShowPassword(!showPassword)}
+              >
+                <Ionicons
+                name={showPassword ? 'eye' : 'eye-off'}
+                size={22}
+                color="#9ca3af"
+                  />
+              </TouchableOpacity>
+            </View>
 
           <TouchableOpacity 
             style={[styles.button, loading && styles.buttonDisabled]} 
@@ -200,6 +213,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+
+  passwordContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#3a3a3a',
+  borderRadius: 8,
+  marginBottom: 15,
+  borderWidth: 1,
+  borderColor: '#3a3a3a',
+},
+passwordInput: {
+  flex: 1,
+  color: 'white',
+  padding: 15,
+  fontSize: 16,
+},
+eyeButton: {
+  padding: 15,
+},
+eyeIcon: {
+  fontSize: 16,
+  color: '#9ca3af',
+},
+
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
