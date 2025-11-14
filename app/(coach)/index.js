@@ -1,230 +1,312 @@
-import { colors } from '@/constants/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-const CoachDashboardScreen = ({ navigation }) => {
-  const [clientes, setClientes] = useState([]);
+const API_URL = 'https://rayostrength-production.up.railway.app/api';
+
+const colors = {
+  primary: '#3B82F6',
+  secondary: '#F59E0B',
+  background: '#F3F4F6',
+  text: '#1F2937',
+  white: '#FFFFFF',
+  gray: '#6B7280',
+  success: '#10B981',
+  error: '#EF4444',
+};
+
+export default function CoachDashboard() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [estadisticas, setEstadisticas] = useState({
+  const [stats, setStats] = useState({
     totalClientes: 0,
-    clientesActivos: 0,
     rutinasCompletadas: 0,
-    promedioWellness: 0
+    clientesActivos: 0
   });
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    cargarDatosCoach();
+    loadCoachData();
   }, []);
 
-  const cargarDatosCoach = async () => {
+  const loadCoachData = async () => {
     try {
+      setLoading(true);
+      setError(null);
+      
       const token = await AsyncStorage.getItem('userToken');
       
-      const response = await fetch('https://rayostrength-production.up.railway.app/api/coach/clientes', {
-        method: 'GET',
+      // Cargar datos de clientes desde la API
+      const response = await fetch(`${API_URL}/coach/clientes`, {
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
         },
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        setClientes(result.clientes);
-        setEstadisticas(result.estadisticas);
-      } else {
-        Alert.alert('Error', 'No se pudieron cargar los datos del coach');
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: No se pudieron cargar los datos`);
       }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        const clientes = data.clientes || [];
+        const totalRutinas = clientes.reduce((sum, cliente) => sum + (cliente.rutinas_completadas || 0), 0);
+        const clientesActivos = clientes.filter(cliente => (cliente.rutinas_completadas || 0) > 0).length;
+        
+        setStats({
+          totalClientes: clientes.length,
+          rutinasCompletadas: totalRutinas,
+          clientesActivos: clientesActivos
+        });
+        
+        console.log('✅ Datos cargados:', {
+          clientes: clientes.length,
+          rutinas: totalRutinas,
+          activos: clientesActivos
+        });
+      } else {
+        throw new Error(data.message || 'Error al cargar datos');
+      }
+      
     } catch (error) {
-      console.error('Error cargando datos coach:', error);
-      Alert.alert('Error', 'No se pudo conectar con el servidor');
+      console.error('Error cargando datos del coach:', error);
+      setError(error.message);
+      
+      // Datos de ejemplo si hay error
+      setStats({
+        totalClientes: 12,
+        rutinasCompletadas: 45,
+        clientesActivos: 8
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const renderTarjetaCliente = ({ item }) => (
-    <TouchableOpacity 
-      style={styles.tarjetaCliente}
-      onPress={() => navigation.navigate('ClientDetail', { cliente: item })}
-    >
-      <View style={styles.infoCliente}>
-        <Text style={styles.nombreCliente}>{item.nombre} {item.apellido}</Text>
-        <Text style={styles.detalleCliente}>Email: {item.email}</Text>
-        <Text style={styles.detalleCliente}>Rutinas completadas: {item.rutinas_completadas}</Text>
-        <Text style={styles.detalleCliente}>Cliente desde: {new Date(item.fecha_inicio).toLocaleDateString()}</Text>
-      </View>
-      <View style={[
-        styles.estadoWellness, 
-        { backgroundColor: item.wellness_promedio >= 7 ? '#4CAF50' : item.wellness_promedio >= 5 ? '#FF9800' : '#F44336' }
-      ]}>
-        <Text style={styles.wellnessTexto}>{item.wellness_promedio ? item.wellness_promedio.toFixed(1) : 'N/A'}/10</Text>
-      </View>
-    </TouchableOpacity>
-  );
+  const handleNavigateToClients = () => {
+    console.log('Navegando a gestión de clientes...');
+    router.push('/clients');
+  };
+
+  const handleLogout = async () => {
+    try {
+      Alert.alert(
+        'Cerrar Sesión',
+        '¿Estás seguro de que quieres cerrar sesión?',
+        [
+          {
+            text: 'Cancelar',
+            style: 'cancel'
+          },
+          {
+            text: 'Cerrar Sesión',
+            style: 'destructive',
+            onPress: async () => {
+              console.log('🔄 Iniciando proceso de logout...');
+              
+              await AsyncStorage.multiRemove(['userToken', 'userData', 'userRole']);
+              console.log('✅ AsyncStorage limpiado');
+              
+              router.replace('/');
+              console.log('✅ Navegación al login completada');
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Error en logout:', error);
+      Alert.alert('Error', 'No se pudo cerrar sesión');
+    }
+  };
 
   if (loading) {
     return (
-      <View style={styles.cargandoContainer}>
-        <ActivityIndicator size="large" color={colors.active} />
-        <Text style={styles.cargandoTexto}>Cargando dashboard...</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Cargando dashboard...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.titulo}>Dashboard Coach</Text>
-      
-      <View style={styles.estadisticasContainer}>
-        <View style={styles.estadisticaCard}>
-          <Text style={styles.estadisticaNumero}>{estadisticas.totalClientes}</Text>
-          <Text style={styles.estadisticaLabel}>Total Clientes</Text>
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Panel del Coach</Text>
+        <Text style={styles.subtitle}>Bienvenido a tu centro de control</Text>
+        
+        {error && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>⚠️ {error}</Text>
+            <Text style={styles.errorSubtext}>Mostrando datos de ejemplo</Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.statsGrid}>
+        <View style={styles.statCard}>
+          <Text style={styles.statNumber}>{stats.totalClientes}</Text>
+          <Text style={styles.statLabel}>Total Clientes</Text>
         </View>
-        <View style={styles.estadisticaCard}>
-          <Text style={styles.estadisticaNumero}>{estadisticas.clientesActivos}</Text>
-          <Text style={styles.estadisticaLabel}>Activos</Text>
+        <View style={styles.statCard}>
+          <Text style={styles.statNumber}>{stats.rutinasCompletadas}</Text>
+          <Text style={styles.statLabel}>Rutinas Completadas</Text>
         </View>
-        <View style={styles.estadisticaCard}>
-          <Text style={styles.estadisticaNumero}>{estadisticas.rutinasCompletadas}</Text>
-          <Text style={styles.estadisticaLabel}>Rutinas Semana</Text>
+        <View style={styles.statCard}>
+          <Text style={styles.statNumber}>{stats.clientesActivos}</Text>
+          <Text style={styles.statLabel}>Clientes Activos</Text>
         </View>
       </View>
 
-      <Text style={styles.subtitulo}>Mis Clientes</Text>
-      <FlatList
-        data={clientes}
-        renderItem={renderTarjetaCliente}
-        keyExtractor={item => item.id_usuario.toString()}
-        style={styles.listaClientes}
-        showsVerticalScrollIndicator={false}
-      />
-
-      <View style={styles.botonesContainer}>
+      <View style={styles.singleAction}>
         <TouchableOpacity 
-          style={styles.botonAccion}
-          onPress={() => navigation.navigate('ClientManagement')}
+          style={styles.mainCard}
+          onPress={handleNavigateToClients}
         >
-          <Text style={styles.textoBoton}>Gestionar Clientes</Text>
+          <Text style={styles.mainCardIcon}>👥</Text>
+          <Text style={styles.mainCardTitle}>Gestión de Clientes</Text>
+          <Text style={styles.mainCardText}>
+            Gestionar {stats.totalClientes} clientes registrados
+          </Text>
         </TouchableOpacity>
       </View>
-    </View>
+
+      <TouchableOpacity 
+        style={styles.logoutButton}
+        onPress={handleLogout}
+      >
+        <Text style={styles.logoutText}>Cerrar Sesión</Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    padding: 16,
   },
-  cargandoContainer: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.background,
   },
-  cargandoTexto: {
+  loadingText: {
     marginTop: 10,
-    color: colors.text,
-    fontSize: 16,
+    color: colors.gray,
   },
-  titulo: {
+  header: {
+    padding: 20,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 20,
     textAlign: 'center',
+    color: colors.primary,
   },
-  estadisticasContainer: {
+  subtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 5,
+    color: colors.gray,
+  },
+  errorBox: {
+    backgroundColor: '#FEF2F2',
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: '#EF4444',
+  },
+  errorText: {
+    color: '#DC2626',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  errorSubtext: {
+    color: '#DC2626',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  statsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    padding: 20,
   },
-  estadisticaCard: {
+  statCard: {
     flex: 1,
-    backgroundColor: colors.card,
-    padding: 16,
+    backgroundColor: colors.white,
+    padding: 15,
     borderRadius: 12,
-    marginHorizontal: 4,
+    marginHorizontal: 5,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  estadisticaNumero: {
+  statNumber: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: colors.active,
+    color: colors.primary,
   },
-  estadisticaLabel: {
-    color: colors.text,
+  statLabel: {
     fontSize: 12,
+    color: colors.gray,
     textAlign: 'center',
-    marginTop: 4,
+    marginTop: 5,
   },
-  subtitulo: {
+  singleAction: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  mainCard: {
+    width: '100%',
+    maxWidth: 300,
+    backgroundColor: colors.white,
+    padding: 30,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  mainCardIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  mainCardTitle: {
     fontSize: 20,
     fontWeight: 'bold',
+    marginBottom: 8,
+    textAlign: 'center',
     color: colors.text,
-    marginBottom: 12,
   },
-  listaClientes: {
-    flex: 1,
-  },
-  tarjetaCliente: {
-    backgroundColor: colors.card,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  infoCliente: {
-    flex: 1,
-  },
-  nombreCliente: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  detalleCliente: {
+  mainCardText: {
     fontSize: 14,
-    color: colors.placeholder,
-    marginBottom: 2,
+    color: colors.gray,
+    textAlign: 'center',
+    lineHeight: 20,
   },
-  estadoWellness: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  wellnessTexto: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  botonesContainer: {
-    marginTop: 20,
-  },
-  botonAccion: {
-    backgroundColor: colors.active,
-    padding: 16,
-    borderRadius: 12,
+  logoutButton: {
+    backgroundColor: colors.error,
+    padding: 15,
+    borderRadius: 8,
     alignItems: 'center',
+    margin: 20,
+    marginTop: 10,
   },
-  textoBoton: {
-    color: colors.card,
+  logoutText: {
+    color: colors.white,
+    fontWeight: 'bold',
     fontSize: 16,
-    fontWeight: 'bold',
   },
 });
-
-export default CoachDashboardScreen;

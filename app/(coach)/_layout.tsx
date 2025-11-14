@@ -14,22 +14,19 @@ export default function CoachLayout() {
 
   const checkUserRole = async () => {
     try {
-      const userDataString = await AsyncStorage.getItem('userData');
-      if (!userDataString) {
-        router.replace('/');
-        return;
-      }
-
-      const userData = JSON.parse(userDataString);
-      if (userData.role === 'coach') {
+      const userData = await AsyncStorage.getItem('userData');
+      const userRole = await AsyncStorage.getItem('userRole');
+      
+      const role = userData ? JSON.parse(userData).role : userRole;
+      
+      if (role === 'coach') {
         setIsCoach(true);
       } else {
-        console.log('Usuario no es coach, redirigiendo...');
         router.replace('/(drawer)/(tabs)/rutinas');
       }
     } catch (error) {
       console.error('Error verificando rol:', error);
-      router.replace('/');
+      router.replace('/(drawer)/(tabs)/rutinas');
     } finally {
       setIsLoading(false);
     }
@@ -45,7 +42,7 @@ export default function CoachLayout() {
   }
 
   if (!isCoach) {
-    return null; 
+    return null;
   }
 
   return (
@@ -67,7 +64,6 @@ export default function CoachLayout() {
           title: 'Dashboard Coach',
         }} 
       />
-      <Stack.Screen name="notes" options={{ title: 'Mis Notas' }} />
       <Stack.Screen name="clients" options={{ headerShown: false }} />
     </Stack>
   );

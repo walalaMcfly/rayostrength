@@ -1,56 +1,54 @@
-import { colors } from '@/constants/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native';
-import { BarChart, LineChart } from "react-native-chart-kit";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-const screenWidth = Dimensions.get("window").width;
+const API_URL = 'https://rayostrength-production.up.railway.app/api';
 
-const ClientDetailScreen = ({ route, navigation }) => {
-  const { cliente } = route.params;
-  const [progreso, setProgreso] = useState(null);
-  const [wellness, setWellness] = useState([]);
+const colors = {
+  primary: '#3B82F6',
+  background: '#F3F4F6',
+  text: '#1F2937',
+  white: '#FFFFFF',
+  gray: '#6B7280',
+};
+
+export default function ClientDetail() {
+  const { id } = useLocalSearchParams();
+  const router = useRouter();
+  const [cliente, setCliente] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('progreso');
 
   useEffect(() => {
-    cargarDatosCliente();
-  }, [cliente]);
+    loadClienteData();
+  }, [id]);
 
-  const cargarDatosCliente = async () => {
+  const loadClienteData = async () => {
     try {
+      setLoading(true);
       const token = await AsyncStorage.getItem('userToken');
       
-      const [progresoResponse, wellnessResponse] = await Promise.all([
-        fetch(`https://rayostrength-production.up.railway.app/api/coach/cliente/${cliente.id_usuario}/progreso`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }),
-        fetch(`https://rayostrength-production.up.railway.app/api/coach/cliente/${cliente.id_usuario}/wellness`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-      ]);
-
-      if (progresoResponse.ok) {
-        const progresoData = await progresoResponse.json();
-        setProgreso(progresoData.progreso);
-      }
-
-      if (wellnessResponse.ok) {
-        const wellnessData = await wellnessResponse.json();
-        setWellness(wellnessData.wellness);
-      }
-
+      // En un futuro, aquí llamarías a endpoints específicos como:
+      // - /api/coach/cliente/${id}/progreso
+      // - /api/coach/cliente/${id}/wellness
+      
+      // Por ahora, datos de ejemplo
+      setCliente({
+        id_usuario: id,
+        nombre: 'Cliente',
+        apellido: 'Ejemplo',
+        email: 'cliente@ejemplo.com',
+        edad: 28,
+        sexo: 'M',
+        peso_actual: '75 kg',
+        altura: '175 cm',
+        rutinas_completadas: 12,
+        ultima_sesion: new Date().toISOString()
+      });
+      
     } catch (error) {
-      console.error('Error cargando datos cliente:', error);
-      Alert.alert('Error', 'No se pudieron cargar los datos del cliente');
+      console.error('Error cargando datos del cliente:', error);
     } finally {
       setLoading(false);
     }
@@ -58,199 +56,232 @@ const ClientDetailScreen = ({ route, navigation }) => {
 
   if (loading) {
     return (
-      <View style={styles.cargandoContainer}>
-        <ActivityIndicator size="large" color={colors.active} />
-        <Text style={styles.cargandoTexto}>Cargando datos del cliente...</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Cargando información del cliente...</Text>
       </View>
     );
   }
 
-  const chartConfig = {
-    backgroundColor: colors.card,
-    backgroundGradientFrom: colors.card,
-    backgroundGradientTo: colors.card,
-    decimalPlaces: 0,
-    color: (opacity = 1) => `rgba(255, 215, 0, ${opacity})`,
-    labelColor: (opacity = 1) => colors.text,
-    style: { borderRadius: 16 },
-    propsForDots: { r: "4", strokeWidth: "2", stroke: colors.active }
-  };
+  if (!cliente) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text>No se pudo cargar la información del cliente</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.titulo}>{cliente.nombre} {cliente.apellido}</Text>
-      
-      <View style={styles.infoContainer}>
-        <Text style={styles.infoLabel}>Email: {cliente.email}</Text>
-        <Text style={styles.infoLabel}>Edad: {cliente.edad} años</Text>
-        <Text style={styles.infoLabel}>Peso: {cliente.peso_actual} kg</Text>
-        <Text style={styles.infoLabel}>Altura: {cliente.altura} cm</Text>
-        <Text style={styles.infoLabel}>Cliente desde: {new Date(cliente.fecha_inicio).toLocaleDateString()}</Text>
+      {/* Header del cliente */}
+      <View style={styles.header}>
+        <Text style={styles.clientName}>
+          {cliente.nombre} {cliente.apellido}
+        </Text>
+        <Text style={styles.clientEmail}>{cliente.email}</Text>
+        <Text style={styles.clientInfo}>
+          {cliente.edad} años • {cliente.sexo} • {cliente.peso_actual} • {cliente.altura}
+        </Text>
       </View>
 
-      {progreso && (
-        <View style={styles.seccion}>
-          <Text style={styles.subtitulo}>Progreso de Entrenamiento</Text>
-          <View style={styles.estadisticasGrid}>
-            <View style={styles.estadisticaCard}>
-              <Text style={styles.estadisticaNumero}>{progreso.rutinasCompletadas}</Text>
-              <Text style={styles.estadisticaLabel}>Rutinas Completadas</Text>
+      {/* Pestañas */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === 'progreso' && styles.activeTab]}
+          onPress={() => setActiveTab('progreso')}
+        >
+          <Text style={[styles.tabText, activeTab === 'progreso' && styles.activeTabText]}>
+            Progreso
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === 'wellness' && styles.activeTab]}
+          onPress={() => setActiveTab('wellness')}
+        >
+          <Text style={[styles.tabText, activeTab === 'wellness' && styles.activeTabText]}>
+            Wellness
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === 'notas' && styles.activeTab]}
+          onPress={() => setActiveTab('notas')}
+        >
+          <Text style={[styles.tabText, activeTab === 'notas' && styles.activeTabText]}>
+            Notas
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Contenido según pestaña activa */}
+      <View style={styles.tabContent}>
+        {activeTab === 'progreso' && (
+          <View style={styles.progressSection}>
+            <Text style={styles.sectionTitle}>Estadísticas de Progreso</Text>
+            
+            <View style={styles.statsGrid}>
+              <View style={styles.statCard}>
+                <Text style={styles.statNumber}>{cliente.rutinas_completadas}</Text>
+                <Text style={styles.statLabel}>Rutinas Completadas</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statNumber}>85%</Text>
+                <Text style={styles.statLabel}>Cumplimiento</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statNumber}>7.5</Text>
+                <Text style={styles.statLabel}>RPE Promedio</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statNumber}>2.1</Text>
+                <Text style={styles.statLabel}>RIR Promedio</Text>
+              </View>
             </View>
-            <View style={styles.estadisticaCard}>
-              <Text style={styles.estadisticaNumero}>{progreso.porcentajeCompletitud}%</Text>
-              <Text style={styles.estadisticaLabel}>Tasa de Completitud</Text>
-            </View>
-            <View style={styles.estadisticaCard}>
-              <Text style={styles.estadisticaNumero}>{progreso.volumenSemanal}</Text>
-              <Text style={styles.estadisticaLabel}>Volumen Semanal</Text>
-            </View>
-            <View style={styles.estadisticaCard}>
-              <Text style={styles.estadisticaNumero}>{progreso.promedioRIR}</Text>
-              <Text style={styles.estadisticaLabel}>RIR Promedio</Text>
+
+            <View style={styles.recentActivity}>
+              <Text style={styles.sectionTitle}>Actividad Reciente</Text>
+              <Text style={styles.emptyText}>
+                Próximamente: Gráficos de progreso y historial de entrenamientos
+              </Text>
             </View>
           </View>
-        </View>
-      )}
+        )}
 
-      {progreso && progreso.rutinasSemanales && (
-        <View style={styles.seccion}>
-          <Text style={styles.subtitulo}>Rutinas Completadas (Semanales)</Text>
-          <BarChart
-            data={{
-              labels: ['S1', 'S2', 'S3', 'S4', 'S5'],
-              datasets: [{ data: progreso.rutinasSemanales }]
-            }}
-            width={screenWidth - 32}
-            height={220}
-            chartConfig={chartConfig}
-            style={styles.grafico}
-          />
-        </View>
-      )}
+        {activeTab === 'wellness' && (
+          <View style={styles.wellnessSection}>
+            <Text style={styles.sectionTitle}>Estado de Wellness</Text>
+            <Text style={styles.emptyText}>
+              Próximamente: Datos de energía, sueño, estrés y motivación
+            </Text>
+          </View>
+        )}
 
-      {wellness.length > 0 && (
-        <View style={styles.seccion}>
-          <Text style={styles.subtitulo}>Estado Wellness (Últimos 7 días)</Text>
-          <LineChart
-            data={{
-              labels: wellness.map(w => new Date(w.fecha).getDate().toString()),
-              datasets: [{
-                data: wellness.map(w => (w.energia + w.sueno + w.motivacion) / 3)
-              }]
-            }}
-            width={screenWidth - 32}
-            height={220}
-            chartConfig={chartConfig}
-            style={styles.grafico}
-          />
-        </View>
-      )}
-
-      <View style={styles.accionesContainer}>
-        <TouchableOpacity 
-          style={styles.botonAccion}
-          onPress={() => navigation.navigate('ClientProgress', { cliente })}
-        >
-          <Text style={styles.textoBoton}>Ver Progreso Detallado</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.botonAccion, { backgroundColor: '#2196F3' }]}
-          onPress={() => navigation.navigate('CoachNotes', { cliente })}
-        >
-          <Text style={styles.textoBoton}>Ver Notas del Coach</Text>
-        </TouchableOpacity>
+        {activeTab === 'notas' && (
+          <View style={styles.notesSection}>
+            <Text style={styles.sectionTitle}>Notas del Coach</Text>
+            <Text style={styles.emptyText}>
+              Próximamente: Sistema de notas y observaciones
+            </Text>
+          </View>
+        )}
       </View>
     </ScrollView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    padding: 16,
   },
-  cargandoContainer: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.background,
   },
-  cargandoTexto: {
+  loadingText: {
     marginTop: 10,
-    color: colors.text,
-    fontSize: 16,
+    color: colors.gray,
   },
-  titulo: {
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  header: {
+    backgroundColor: colors.white,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  clientName: {
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 16,
-    textAlign: 'center',
   },
-  infoContainer: {
-    backgroundColor: colors.card,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
-  },
-  infoLabel: {
+  clientEmail: {
     fontSize: 16,
-    color: colors.text,
-    marginBottom: 8,
+    color: colors.gray,
+    marginTop: 5,
   },
-  seccion: {
-    marginBottom: 24,
+  clientInfo: {
+    fontSize: 14,
+    color: colors.gray,
+    marginTop: 5,
   },
-  subtitulo: {
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  tab: {
+    flex: 1,
+    padding: 15,
+    alignItems: 'center',
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
+  },
+  tabText: {
+    color: colors.gray,
+    fontWeight: '500',
+  },
+  activeTabText: {
+    color: colors.primary,
+    fontWeight: 'bold',
+  },
+  tabContent: {
+    padding: 20,
+  },
+  progressSection: {
+
+  },
+  wellnessSection: {
+  },
+  notesSection: {
+  },
+  sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 12,
+    marginBottom: 15,
   },
-  estadisticasGrid: {
+  statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+    marginBottom: 20,
   },
-  estadisticaCard: {
+  statCard: {
     width: '48%',
-    backgroundColor: colors.card,
-    padding: 16,
+    backgroundColor: colors.white,
+    padding: 15,
     borderRadius: 12,
-    marginBottom: 12,
+    marginBottom: 10,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  estadisticaNumero: {
+  statNumber: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: colors.active,
+    color: colors.primary,
   },
-  estadisticaLabel: {
-    color: colors.text,
+  statLabel: {
     fontSize: 12,
+    color: colors.gray,
     textAlign: 'center',
-    marginTop: 4,
+    marginTop: 5,
   },
-  grafico: {
-    borderRadius: 16,
-  },
-  accionesContainer: {
-    marginTop: 20,
-  },
-  botonAccion: {
-    backgroundColor: colors.active,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  textoBoton: {
-    color: colors.card,
-    fontSize: 16,
-    fontWeight: 'bold',
+  emptyText: {
+    textAlign: 'center',
+    color: colors.gray,
+    fontStyle: 'italic',
+    padding: 20,
   },
 });
-
-export default ClientDetailScreen;
