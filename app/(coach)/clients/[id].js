@@ -29,11 +29,6 @@ export default function ClientDetail() {
       setLoading(true);
       const token = await AsyncStorage.getItem('userToken');
       
-      // En un futuro, aquí llamarías a endpoints específicos como:
-      // - /api/coach/cliente/${id}/progreso
-      // - /api/coach/cliente/${id}/wellness
-      
-      // Por ahora, datos de ejemplo
       setCliente({
         id_usuario: id,
         nombre: 'Cliente',
@@ -73,7 +68,6 @@ export default function ClientDetail() {
 
   return (
     <ScrollView style={styles.container}>
-      {/* Header del cliente */}
       <View style={styles.header}>
         <Text style={styles.clientName}>
           {cliente.nombre} {cliente.apellido}
@@ -84,7 +78,6 @@ export default function ClientDetail() {
         </Text>
       </View>
 
-      {/* Pestañas */}
       <View style={styles.tabsContainer}>
         <TouchableOpacity 
           style={[styles.tab, activeTab === 'progreso' && styles.activeTab]}
@@ -103,6 +96,14 @@ export default function ClientDetail() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity 
+          style={[styles.tab, activeTab === 'rutina' && styles.activeTab]}
+          onPress={() => setActiveTab('rutina')}
+        >
+          <Text style={[styles.tabText, activeTab === 'rutina' && styles.activeTabText]}>
+            Rutina
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
           style={[styles.tab, activeTab === 'notas' && styles.activeTab]}
           onPress={() => setActiveTab('notas')}
         >
@@ -112,7 +113,6 @@ export default function ClientDetail() {
         </TouchableOpacity>
       </View>
 
-      {/* Contenido según pestaña activa */}
       <View style={styles.tabContent}>
         {activeTab === 'progreso' && (
           <View style={styles.progressSection}>
@@ -151,6 +151,23 @@ export default function ClientDetail() {
             <Text style={styles.sectionTitle}>Estado de Wellness</Text>
             <Text style={styles.emptyText}>
               Próximamente: Datos de energía, sueño, estrés y motivación
+            </Text>
+          </View>
+        )}
+
+        {activeTab === 'rutina' && (
+          <View style={styles.rutinaSection}>
+            <Text style={styles.sectionTitle}>Rutina Personalizada</Text>
+            
+            <TouchableOpacity 
+              style={styles.vincularButton}
+              onPress={() => router.push(`/(coach)/clients/vinculacion-hoja?id=${id}`)}
+            >
+              <Text style={styles.vincularButtonText}>📎 Vincular Hoja de Cálculo</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.emptyText}>
+              Aquí podrás gestionar la rutina personalizada del cliente
             </Text>
           </View>
         )}
@@ -240,6 +257,8 @@ const styles = StyleSheet.create({
   },
   wellnessSection: {
   },
+  rutinaSection: {
+  },
   notesSection: {
   },
   sectionTitle: {
@@ -283,5 +302,17 @@ const styles = StyleSheet.create({
     color: colors.gray,
     fontStyle: 'italic',
     padding: 20,
+  },
+  vincularButton: {
+    backgroundColor: colors.primary,
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  vincularButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

@@ -22,7 +22,7 @@ export default function RutinasScreen() {
   const router = useRouter();
   const [notasCliente, setNotasCliente] = useState({});
   const [setsCompletados, setSetsCompletados] = useState({});
-  const [rutinas, setRutinas] = useState([]);
+  const [rutina, setRutina] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userToken, setUserToken] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -36,7 +36,6 @@ export default function RutinasScreen() {
     const obtenerToken = async () => {
       try {
         const token = await AsyncStorage.getItem('userToken');
-        console.log('🔑 Token obtenido:', token ? '✅' : '❌ No encontrado');
         setUserToken(token);
       } catch (error) {
         console.error('Error obteniendo token:', error);
@@ -49,24 +48,23 @@ export default function RutinasScreen() {
 
   useEffect(() => {
     if (userToken) {
-      cargarRutinas();
+      cargarRutinaPersonalizada();
     }
   }, [userToken]);
 
-  const cargarRutinas = async () => {
+  const cargarRutinaPersonalizada = async () => {
     try {
       setLoading(true);
-      console.log('🔗 Iniciando carga de rutinas...');
+      const token = await AsyncStorage.getItem('userToken');
+      const user = JSON.parse(await AsyncStorage.getItem('userData'));
 
-      const response = await fetch(`${BASE_URL}/api/rutinas/Rayostrenght`, {
+      const response = await fetch(`${BASE_URL}/api/rutinas-personalizadas/cliente/${user.id_usuario}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${userToken}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
-
-      console.log('📡 Status:', response.status);
 
       if (response.status === 401) {
         throw new Error('Token inválido o expirado');
@@ -77,15 +75,14 @@ export default function RutinasScreen() {
       }
 
       const result = await response.json();
-      console.log('✅ Datos recibidos:', result);
 
       if (result.success) {
-        setRutinas(result.rutinas);
+        setRutina(result);
       } else {
         Alert.alert('Error', result.message || 'Error al cargar rutinas');
       }
     } catch (error) {
-      console.error('❌ Error cargando rutinas:', error);
+      console.error('❌ Error cargando rutina:', error);
       
       if (error.message.includes('Token') || error.message.includes('401')) {
         Alert.alert('Sesión expirada', 'Por favor inicia sesión nuevamente');
@@ -101,87 +98,73 @@ export default function RutinasScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await cargarRutinas();
+    await cargarRutinaPersonalizada();
     setRefreshing(false);
   };
 
   const abrirModalDatosReales = (ejercicio) => {
     setEjercicioEditando(ejercicio);
-    setRepsTemp(realesData[ejercicio.id]?.repsReales || ejercicio.reps || '');
-    setPesoTemp(realesData[ejercicio.id]?.pesoReal || ejercicio.peso || '');
+    setRepsTemp(realesData[ejercicio.id]?.repsReales || ejercicio.repeticiones || '');
+    setPesoTemp(realesData[ejercicio.id]?.pesoReal || ejercicio.pesoSugerido || '');
   };
 
-const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
-  try {
-    console.log('📤 Enviando datos reales:', { 
-      ejercicioId, 
-      pesoReal, 
-      repsReal 
-    });
-
-    const token = await AsyncStorage.getItem('userToken');
-    
-    if (!token) {
-      throw new Error('No hay token de autenticación');
-    }
-
-    const payload = {
-      id_ejercicio: ejercicioId,
-      peso_utilizado: pesoReal ? parseFloat(pesoReal) : null,
-      reps_logradas: repsReal ? parseInt(repsReal) : null
-    };
-
-    console.log('📦 Payload:', payload);
-
-    const response = await fetch('https://rayostrength-production.up.railway.app/api/progreso/actualizar-ejercicio', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    console.log('🔍 Status de respuesta:', response.status);
-
-    const responseText = await response.text();
-    console.log('📄 Respuesta cruda:', responseText.substring(0, 500));
-
-    // Verificar si es HTML (error del servidor)
-    if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html>')) {
-      console.error('❌ Servidor devolvió HTML - Error 500/404');
-      throw new Error('Error interno del servidor. Contacta al administrador.');
-    }
-
-    // Intentar parsear JSON
-    let data;
+  const guardarDatosReales = async (ejercicioId, repsReal, pesoReal) => {
     try {
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('❌ Error parseando JSON:', parseError);
-      console.error('📄 Contenido recibido:', responseText);
-      throw new Error('Respuesta inválida del servidor');
+      const token = await AsyncStorage.getItem('userToken');
+      
+      if (!token) {
+        throw new Error('No hay token de autenticación');
+      }
+
+      const payload = {
+        id_ejercicio: ejercicioId,
+        reps_logradas: repsReal,
+        peso_utilizado: pesoReal
+      };
+
+      const response = await fetch('https://rayostrength-production.up.railway.app/api/progreso/actualizar-ejercicio', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const responseText = await response.text();
+
+      if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html>')) {
+        throw new Error('Error interno del servidor. Contacta al administrador.');
+      }
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        throw new Error('Respuesta inválida del servidor');
+      }
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || data.message || `Error ${response.status}`);
+      }
+
+      setRealesData(prev => ({
+        ...prev,
+        [ejercicioId]: {
+          repsReales: repsReal,
+          pesoReal: pesoReal
+        }
+      }));
+
+      Alert.alert('✅ Éxito', 'Datos guardados correctamente');
+    } catch (error) {
+      console.error('❌ Error guardarDatosReales:', error);
+      Alert.alert(
+        'Error al guardar',
+        error.message || 'No se pudieron guardar los datos. Verifica tu conexión.'
+      );
     }
-
-    // Verificar si la respuesta indica éxito
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || data.message || `Error ${response.status}`);
-    }
-
-    console.log('✅ Datos guardados exitosamente:', data);
-    return data;
-
-  } catch (error) {
-    console.error('❌ Error completo guardarDatosReales:', error);
-    Alert.alert(
-      'Error al guardar',
-      error.message || 'No se pudieron guardar los datos. Verifica tu conexión.',
-      [{ text: 'OK' }]
-    );
-    
-    throw error;
-  }
-};
+  };
 
   const toggleSet = async (ejercicioId, setNumber) => {
     const nuevosSets = { ...setsCompletados };
@@ -192,7 +175,7 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
 
     try {
       const setsCompletadosCount = Object.values(nuevosSets[ejercicioId] || {}).filter(Boolean).length;
-      const ejercicio = rutinas.find(e => e.id === ejercicioId);
+      const ejercicio = rutina.rutina.ejercicios.find(e => e.id === ejercicioId);
       
       await fetch(`${BASE_URL}/api/progreso/guardar-ejercicio`, {
         method: 'POST',
@@ -204,17 +187,13 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
           id_ejercicio: ejercicioId,
           nombre_ejercicio: ejercicio?.nombre,
           sets_completados: setsCompletadosCount,
-          reps_logradas: realesData[ejercicioId]?.repsReales || ejercicio?.reps,
-          peso_utilizado: realesData[ejercicioId]?.pesoReal || ejercicio?.peso,
+          reps_logradas: realesData[ejercicioId]?.repsReales || ejercicio?.repeticiones,
+          peso_utilizado: realesData[ejercicioId]?.pesoReal || ejercicio?.pesoSugerido,
           rir_final: ejercicio?.rir,
-          rpe_final: ejercicio?.rpe,
           notas: notasCliente[ejercicioId] || `Sets completados: ${setsCompletadosCount}`
         }),
       });
 
-      console.log(`✅ Progreso guardado: ${ejercicio?.nombre} - ${setsCompletadosCount} sets`);
-
-      // Verificar si se completó el ejercicio
       if (setsCompletadosCount === ejercicio?.series) {
         verificarRutinaCompletada();
       }
@@ -224,61 +203,20 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
     }
   };
 
-  const probarEndpointProgreso = async () => {
-  try {
-    const token = await AsyncStorage.getItem('userToken');
-    console.log('🔍 Token disponible:', !!token);
-
-    const testData = {
-      id_ejercicio: 'test-' + Date.now(),
-      peso_utilizado: 50,
-      reps_logradas: 10
-    };
-
-    console.log('🧪 Probando endpoint progreso...', testData);
-
-    const response = await fetch('https://rayostrength-production.up.railway.app/api/progreso/actualizar-ejercicio', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(testData),
-    });
-
-    const text = await response.text();
-    console.log('📋 Status:', response.status);
-    console.log('📄 Respuesta:', text);
-
-    // Intentar parsear
-    try {
-      const data = JSON.parse(text);
-      console.log('✅ JSON parseado:', data);
-    } catch (e) {
-      console.error('❌ No se pudo parsear JSON:', e.message);
-    }
-
-  } catch (error) {
-    console.error('❌ Error en prueba:', error);
-  }
-};
-
-
   const verificarRutinaCompletada = async () => {
     try {
-      const ejerciciosCompletados = rutinas.filter(ejercicio => {
+      const ejerciciosCompletados = rutina.rutina.ejercicios.filter(ejercicio => {
         const setsDelEjercicio = setsCompletados[ejercicio.id] || {};
         const setsCompletadosCount = Object.values(setsDelEjercicio).filter(Boolean).length;
         return setsCompletadosCount === ejercicio.series;
       }).length;
 
-      const porcentajeCompletitud = (ejerciciosCompletados / rutinas.length) * 100;
-      console.log(`📊 Progreso rutina: ${ejerciciosCompletados}/${rutinas.length} (${porcentajeCompletitud}%)`);
+      const porcentajeCompletitud = (ejerciciosCompletados / rutina.rutina.ejercicios.length) * 100;
 
-      if (porcentajeCompletitud >= 80 && ejerciciosCompletados < rutinas.length) {
+      if (porcentajeCompletitud >= 80 && ejerciciosCompletados < rutina.rutina.ejercicios.length) {
         Alert.alert(
           "¿Rutina completada?",
-          `Has completado ${ejerciciosCompletados} de ${rutinas.length} ejercicios. ¿Quieres marcar la rutina como completada?`,
+          `Has completado ${ejerciciosCompletados} de ${rutina.rutina.ejercicios.length} ejercicios. ¿Quieres marcar la rutina como completada?`,
           [
             { text: "No, aún no", style: "cancel" },
             { 
@@ -289,7 +227,7 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
         );
       }
 
-      if (ejerciciosCompletados === rutinas.length) {
+      if (ejerciciosCompletados === rutina.rutina.ejercicios.length) {
         registrarSesionCompletada(ejerciciosCompletados);
       }
 
@@ -300,15 +238,12 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
 
   const registrarSesionCompletada = async (ejerciciosCompletados) => {
     try {
-      const volumenTotal = rutinas.reduce((total, ejercicio) => {
-        const peso = parseFloat(realesData[ejercicio.id]?.pesoReal || ejercicio.peso) || 0;
+      const volumenTotal = rutina.rutina.ejercicios.reduce((total, ejercicio) => {
+        const peso = parseFloat(realesData[ejercicio.id]?.pesoReal || ejercicio.pesoSugerido) || 0;
         const series = ejercicio.series || 0;
-        const reps = parseFloat(realesData[ejercicio.id]?.repsReales || ejercicio.reps) || 0;
+        const reps = parseFloat(realesData[ejercicio.id]?.repsReales || ejercicio.repeticiones) || 0;
         return total + (peso * series * reps);
       }, 0);
-
-      const rpePromedio = rutinas.reduce((total, ejercicio) => total + (ejercicio.rpe || 0), 0) / rutinas.length;
-      const rirPromedio = rutinas.reduce((total, ejercicio) => total + (ejercicio.rir || 0), 0) / rutinas.length;
 
       await fetch(`${BASE_URL}/api/progreso/registrar-sesion`, {
         method: 'POST',
@@ -317,13 +252,11 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          semana_rutina: 'Rayostrenght',
-          total_ejercicios: rutinas.length,
+          semana_rutina: rutina.personalizada ? 'Personalizada' : 'General',
+          total_ejercicios: rutina.rutina.ejercicios.length,
           ejercicios_completados: ejerciciosCompletados,
           duracion_total_minutos: 60,
           volumen_total: volumenTotal,
-          rpe_promedio: rpePromedio.toFixed(1),
-          rir_promedio: rirPromedio.toFixed(1),
           notas_usuario: 'Rutina completada exitosamente con datos reales'
         }),
       });
@@ -342,7 +275,7 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
     setNotasCliente(nuevasNotas);
 
     try {
-      const ejercicio = rutinas.find(e => e.id === ejercicioId);
+      const ejercicio = rutina.rutina.ejercicios.find(e => e.id === ejercicioId);
       const setsCompletadosCount = Object.values(setsCompletados[ejercicioId] || {}).filter(Boolean).length;
       
       await fetch(`${BASE_URL}/api/progreso/guardar-ejercicio`, {
@@ -355,10 +288,9 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
           id_ejercicio: ejercicioId,
           nombre_ejercicio: ejercicio?.nombre,
           sets_completados: setsCompletadosCount,
-          reps_logradas: realesData[ejercicioId]?.repsReales || ejercicio?.reps,
-          peso_utilizado: realesData[ejercicioId]?.pesoReal || ejercicio?.peso,
+          reps_logradas: realesData[ejercicioId]?.repsReales || ejercicio?.repeticiones,
+          peso_utilizado: realesData[ejercicioId]?.pesoReal || ejercicio?.pesoSugerido,
           rir_final: ejercicio?.rir,
-          rpe_final: ejercicio?.rpe,
           notas: texto
         }),
       });
@@ -367,20 +299,26 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
     }
   };
 
-  const renderItem = ({ item }) => {
+  const renderItem = ({ item, index }) => {
     const datosReales = realesData[item.id];
     const setsCompletadosCount = Object.values(setsCompletados[item.id] || {}).filter(Boolean).length;
     const completado = setsCompletadosCount === item.series;
 
     return (
       <View style={[styles.card, completado && styles.cardCompletada]}>
+        {item.grupoMuscular && item.grupoMuscular !== 'General' && (
+          <View style={styles.grupoHeader}>
+            <Text style={styles.grupoText}>{item.grupoMuscular}</Text>
+          </View>
+        )}
+
         <View style={styles.exerciseHeader}>
           <Text style={styles.exerciseName}>{item.nombre}</Text>
           {completado && <Ionicons name="checkmark-circle" size={20} color={colors.active} />}
         </View>
 
-        {item.videoUrl && (
-          <TouchableOpacity onPress={() => Linking.openURL(item.videoUrl)}>
+        {item.video && item.video !== '-' && (
+          <TouchableOpacity onPress={() => Linking.openURL(item.video)}>
             <View style={styles.row}>
               <Ionicons name="play-circle" size={20} color={colors.icon} />
               <Text style={styles.videoText}>Ver video</Text>
@@ -389,8 +327,7 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
         )}
 
         <Text style={styles.details}>
-          Series {item.series} / Reps {item.reps} / Tempo {item.tempo} / RIR{" "}
-          {item.rir} / RPE @{item.rpe} / Peso {item.peso}
+          Series {item.series} / Reps {item.repeticiones} / RIR {item.rir} / Descanso {item.descanso}
         </Text>
 
         {datosReales && (
@@ -421,15 +358,15 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
           ))}
         </View>
 
-       <TouchableOpacity 
-  style={styles.botonReales}
-  onPress={() => abrirModalDatosReales(item)}
->
-  <Ionicons name="create-outline" size={16} color={colors.text} />
-  <Text style={styles.textoBotonReales}>
-    {datosReales ? 'Editar peso y reps' : 'Registrar peso y reps reales'}
-  </Text>
-</TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.botonReales}
+          onPress={() => abrirModalDatosReales(item)}
+        >
+          <Ionicons name="create-outline" size={16} color={colors.text} />
+          <Text style={styles.textoBotonReales}>
+            {datosReales ? 'Editar peso y reps' : 'Registrar peso y reps reales'}
+          </Text>
+        </TouchableOpacity>
 
         <View style={styles.feedbackBox}>
           <Text style={styles.feedbackLabel}>Nota Cliente:</Text>
@@ -442,13 +379,6 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
             multiline
           />
         </View>
-
-        {item.notaCoach && (
-          <View style={styles.feedbackBox}>
-            <Text style={styles.feedbackLabel}>Nota Coach:</Text>
-            <Text style={{ color: colors.text }}>{item.notaCoach}</Text>
-          </View>
-        )}
       </View>
     );
   };
@@ -464,9 +394,33 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
 
   return (
     <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>
+          {rutina?.personalizada 
+            ? `🏋️ Mi Rutina Personalizada`
+            : '📋 Rutina General'
+          }
+        </Text>
+        
+        {rutina?.personalizada ? (
+          <View style={styles.infoContainer}>
+            <Text style={styles.coachText}>Creada por: {rutina.coach}</Text>
+            <Text style={styles.syncText}>
+              Última actualización: {new Date(rutina.ultimaSincronizacion).toLocaleDateString()}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.infoContainer}>
+            <Text style={styles.infoText}>
+              Tu coach aún no te ha asignado una rutina personalizada.
+            </Text>
+          </View>
+        )}
+      </View>
+
       <FlatList
-        data={rutinas}
-        keyExtractor={(item) => item.id}
+        data={rutina?.rutina?.ejercicios || []}
+        keyExtractor={(item, index) => item.id || `ej-${index}`}
         renderItem={renderItem}
         contentContainerStyle={{ paddingBottom: 24 }}
         refreshing={refreshing} 
@@ -480,65 +434,63 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
         <Text style={styles.textoBotonCompletarRutina}>✅ Completar Rutina</Text>
       </TouchableOpacity>
 
+      <Modal
+        visible={!!ejercicioEditando}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setEjercicioEditando(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>📝 Peso y Repeticiones Realizadas - {ejercicioEditando?.nombre}</Text>
+            
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Repeticiones Realizadas:</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={repsTemp}
+                onChangeText={setRepsTemp}
+                placeholder="Ej: 10, 8-12, 15"
+                placeholderTextColor={colors.placeholder}
+                keyboardType="default"
+              />
+            </View>
 
-     <Modal
-  visible={!!ejercicioEditando}
-  transparent={true}
-  animationType="slide"
-  onRequestClose={() => setEjercicioEditando(null)}
->
-  <View style={styles.modalOverlay}>
-    <View style={styles.modalContent}>
-      <Text style={styles.modalTitle}>📝 Peso y Repeticiones Realizadas - {ejercicioEditando?.nombre}</Text>
-      
-      <View style={styles.modalField}>
-        <Text style={styles.modalLabel}>Repeticiones Realizadas:</Text>
-        <TextInput
-          style={styles.modalInput}
-          value={repsTemp}
-          onChangeText={setRepsTemp}
-          placeholder="Ej: 10, 8-12, 15"
-          placeholderTextColor={colors.placeholder}
-          keyboardType="default"
-        />
-      </View>
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Peso Utilizado (kg):</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={pesoTemp}
+                onChangeText={setPesoTemp}
+                placeholder="Ej: 40, 50-60, barra"
+                placeholderTextColor={colors.placeholder}
+                keyboardType="default"
+              />
+            </View>
 
-      <View style={styles.modalField}>
-        <Text style={styles.modalLabel}>Peso Utilizado (kg):</Text>
-        <TextInput
-          style={styles.modalInput}
-          value={pesoTemp}
-          onChangeText={setPesoTemp}
-          placeholder="Ej: 40, 50-60, barra"
-          placeholderTextColor={colors.placeholder}
-          keyboardType="default"
-        />
-      </View>
-
-      <View style={styles.modalButtons}>
-        <TouchableOpacity 
-          style={[styles.modalButton, styles.modalButtonCancel]}
-          onPress={() => setEjercicioEditando(null)}
-        >
-          <Text style={styles.modalButtonTextCancel}>Cancelar</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.modalButton, styles.modalButtonSave]}
-          onPress={() => {
-            if (ejercicioEditando) {
-              guardarDatosReales(ejercicioEditando.id, repsTemp, pesoTemp);
-            }
-            setEjercicioEditando(null);
-          }}
-        >
-          <Text style={styles.modalButtonTextSave}>Guardar</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </View>
-</Modal>
-
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => setEjercicioEditando(null)}
+              >
+                <Text style={styles.modalButtonTextCancel}>Cancelar</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.modalButtonSave]}
+                onPress={() => {
+                  if (ejercicioEditando) {
+                    guardarDatosReales(ejercicioEditando.id, repsTemp, pesoTemp);
+                  }
+                  setEjercicioEditando(null);
+                }}
+              >
+                <Text style={styles.modalButtonTextSave}>Guardar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showModalCompletar}
@@ -566,7 +518,7 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
               <TouchableOpacity 
                 style={[styles.modalButton, styles.modalButtonConfirm]}
                 onPress={() => {
-                  const ejerciciosCompletados = rutinas.filter(ejercicio => {
+                  const ejerciciosCompletados = rutina.rutina.ejercicios.filter(ejercicio => {
                     const setsCompletadosCount = Object.values(setsCompletados[ejercicio.id] || {}).filter(Boolean).length;
                     return setsCompletadosCount === ejercicio.series;
                   }).length;
@@ -586,24 +538,65 @@ const guardarDatosReales = async (ejercicioId, pesoReal, repsReal) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
     backgroundColor: colors.background,
+  },
+  header: {
+    padding: 20,
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  infoContainer: {
+    marginTop: 5,
+  },
+  coachText: {
+    color: colors.active,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  syncText: {
+    color: colors.placeholder,
+    fontSize: 14,
+    marginTop: 2,
+  },
+  infoText: {
+    color: colors.text,
+    fontSize: 14,
   },
   card: {
     backgroundColor: colors.card,
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    overflow: 'hidden',
   },
   cardCompletada: {
     borderLeftWidth: 4,
     borderLeftColor: colors.active,
   },
+  grupoHeader: {
+    backgroundColor: colors.active,
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+  },
+  grupoText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+  },
   exerciseHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    padding: 16,
+    paddingBottom: 0,
   },
   exerciseName: {
     fontSize: 18,
@@ -615,6 +608,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 6,
+    paddingHorizontal: 16,
   },
   videoText: {
     marginLeft: 8,
@@ -625,12 +619,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 10,
     color: colors.text,
+    paddingHorizontal: 16,
   },
   realesContainer: {
     backgroundColor: 'rgba(255,215,0,0.1)',
     padding: 8,
     borderRadius: 8,
-    marginBottom: 10,
+    margin: 16,
+    marginTop: 0,
     borderLeftWidth: 3,
     borderLeftColor: colors.active,
   },
@@ -648,6 +644,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 12,
+    paddingHorizontal: 16,
   },
   setButton: {
     flex: 1,
@@ -662,6 +659,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.1)',
     padding: 8,
     borderRadius: 8,
+    marginHorizontal: 16,
     marginBottom: 10,
     alignSelf: 'flex-start',
   },
@@ -675,7 +673,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 8,
     padding: 8,
-    marginBottom: 10,
+    margin: 16,
+    marginTop: 0,
   },
   feedbackLabel: {
     fontWeight: "600",

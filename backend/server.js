@@ -997,3 +997,204 @@ const startServer = async () => {
 };
 
 startServer();
+
+// Vincular hoja de Google Sheets a cliente
+app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'coach') {
+      return res.status(403).json({
+        success: false,
+        message: 'Acceso denegado. Solo para coaches.'
+      });
+    }
+
+    const { idCliente, sheetUrl } = req.body;
+    const idCoach = req.user.coachId;
+
+    const sheetId = extraerSheetId(sheetUrl);
+
+    const sheets = google.sheets({ version: 'v4', auth: googleSheets.auth });
+    await sheets.spreadsheets.get({
+      spreadsheetId: sheetId,
+    });
+
+    const [result] = await pool.execute(
+      `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja) 
+       VALUES (?, ?, ?, ?)`,
+      [idCliente, idCoach, sheetId, `Hoja_${idCliente}`]
+    );
+
+    await sincronizarRutinaDesdeSheets(idCliente, sheetId);
+
+    res.json({
+      success: true,
+      message: 'Hoja vinculada y sincronizada correctamente',
+      idMapping: result.insertId
+    });
+
+  } catch (error) {
+    console.error('Error vinculando hoja:', error);
+    res.status(500).json({
+      success: false,
+      message: 'No se pudo vincular la hoja: ' + error.message
+    });
+  }
+});
+
+// Obtener rutina personalizada de un cliente
+app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, async (req, res) => {
+  try {
+    const { idCliente } = req.params;
+
+    if (req.user.role === 'coach' || (req.user.role === 'user' && req.user.userId == idCliente)) {
+      
+      const [hojas] = await pool.execute(
+        `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
+         FROM HojasClientes hc
+         JOIN Coach c ON hc.id_coach = c.id_coach
+         WHERE hc.id_cliente = ? AND hc.activa = TRUE`,
+        [idCliente]
+      );
+
+      if (hojas.length > 0) {
+        const [cache] = await pool.execute(
+          `SELECT datos_rutina FROM CacheRutinas 
+           WHERE id_cliente = ? 
+           ORDER BY fecha_actualizacion DESC LIMIT 1`,
+          [idCliente]
+        );
+
+        if (cache.length > 0) {
+          return res.json({
+            personalizada: true,
+            coach: `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}`,
+            hojaVinculada: true,
+            ultimaSincronizacion: hojas[0].ultima_sincronizacion,
+            rutina: JSON.parse(cache[0].datos_rutina)
+          });
+        }
+      }
+
+      const data = await googleSheets.readSheet('Rayostrenght');
+      const rutinaGeneral = transformSheetDataToRutinas(data);
+
+      res.json({
+        personalizada: false,
+        hojaVinculada: false,
+        rutina: rutinaGeneral
+      });
+    } else {
+      res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para ver esta rutina'
+      });
+    }
+
+  } catch (error) {
+    console.error('Error obteniendo rutina personalizada:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener la rutina'
+    });
+  }
+});
+
+// Sincronizar rutina desde Google Sheets
+async function sincronizarRutinaDesdeSheets(idCliente, sheetId) {
+  try {
+    const sheets = google.sheets({ version: 'v4', auth: googleSheets.auth });
+    
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: 'A:Z',
+    });
+
+    const data = response.data.values || [];
+    const rutinaProcesada = procesarDatosRutina(data);
+
+    await pool.execute(
+      `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
+       VALUES (?, ?) 
+       ON DUPLICATE KEY UPDATE datos_rutina = VALUES(datos_rutina), fecha_actualizacion = NOW()`,
+      [idCliente, JSON.stringify(rutinaProcesada)]
+    );
+
+    await pool.execute(
+      `UPDATE HojasClientes SET ultima_sincronizacion = NOW() WHERE id_cliente = ? AND activa = TRUE`,
+      [idCliente]
+    );
+
+    console.log(`✅ Rutina sincronizada para cliente ${idCliente}`);
+  } catch (error) {
+    console.error('Error sincronizando rutina:', error);
+    throw error;
+  }
+}
+
+// Procesar datos de la hoja de cálculo
+function procesarDatosRutina(rows) {
+  if (!rows || rows.length < 2) return { ejercicios: [] };
+
+  const ejercicios = [];
+  
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (row.length >= 7 && row[1]) {
+      const ejercicio = {
+        grupoMuscular: limpiarGrupoMuscular(row[0]),
+        nombre: row[1],
+        video: row[2],
+        series: parseInt(row[3]) || 0,
+        repeticiones: row[4],
+        rir: extraerRIR(row[5]),
+        descanso: row[6],
+        pesoSugerido: row[7] || null,
+        tecnica: row[8] || null
+      };
+      
+      if (ejercicio.nombre && ejercicio.nombre.trim() !== '') {
+        ejercicios.push(ejercicio);
+      }
+    }
+  }
+
+  return {
+    ejercicios,
+    metadata: {
+      totalEjercicios: ejercicios.length,
+      gruposMusculares: [...new Set(ejercicios.map(e => e.grupoMuscular))],
+      fechaProcesamiento: new Date().toISOString()
+    }
+  };
+}
+
+// Utilidades
+function limpiarGrupoMuscular(texto) {
+  if (!texto) return 'General';
+  
+  const mapping = {
+    'CHEST': 'Pecho',
+    'QUADS': 'Piernas', 
+    'GUITE': 'Glúteos',
+    'BACK': 'Espalda',
+    'SHOULDERS': 'Hombros',
+    'BICEPS': 'Bíceps',
+    'TRICEPS': 'Tríceps'
+  };
+  
+  for (const [key, value] of Object.entries(mapping)) {
+    if (texto.toUpperCase().includes(key)) return value;
+  }
+  return 'General';
+}
+
+function extraerRIR(texto) {
+  if (!texto) return null;
+  const match = texto.match(/r\((\d+)\)/);
+  return match ? parseInt(match[1]) : null;
+}
+
+function extraerSheetId(url) {
+  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return match ? match[1] : null;
+}
