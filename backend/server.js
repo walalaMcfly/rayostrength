@@ -1001,8 +1001,6 @@ startServer();
 // Vincular hoja de Google Sheets a cliente
 app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res) => {
   try {
-    console.log('🔗 Iniciando vinculación de hoja...');
-    
     if (req.user.role !== 'coach') {
       return res.status(403).json({ success: false, message: 'Acceso denegado' });
     }
@@ -1010,58 +1008,37 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
     const { idCliente, sheetUrl } = req.body;
     const idCoach = req.user.coachId;
 
-    console.log('📝 Datos recibidos:', { idCliente, idCoach, sheetUrl });
-
-    if (!idCliente || !sheetUrl) {
-      return res.status(400).json({ success: false, message: 'Datos incompletos' });
-    }
-
-    // Extraer el ID de la hoja
     const sheetId = extraerSheetId(sheetUrl);
-    console.log('📄 Sheet ID extraído:', sheetId);
-
-    if (!sheetId) {
-      return res.status(400).json({ success: false, message: 'URL de Google Sheets no válida' });
-    }
-
+    
+    // Verificación simple de acceso
     try {
-      // Verificar que la hoja existe y es accesible
-      console.log('🔍 Verificando acceso a la hoja...');
-      await googleSheets.healthCheck(); // Primero verifica que la conexión general funcione
-      
-      const sheets = google.sheets({ version: 'v4', auth: googleSheets.auth });
-      await sheets.spreadsheets.get({ spreadsheetId: sheetId });
-      console.log('✅ Hoja verificada correctamente');
-    } catch (authError) {
-      console.error('❌ Error de autenticación/acceso:', authError);
+      const testData = await googleSheets.readSheetFromId(sheetId);
+      console.log('✅ Hoja accesible');
+    } catch (error) {
+      console.error('❌ Error acceso:', error.message);
       return res.status(403).json({ 
         success: false, 
-        message: 'No se pudo acceder a la hoja. Verifica que esté compartida con la cuenta de servicio.' 
+        message: 'Problema de permisos. Verifica que el email de la cuenta de servicio sea EXACTO: rayostrength-sheets@rayostrength-434a7.iam.gserviceaccount.com (sin espacios)' 
       });
     }
 
-    // Guardar en la base de datos
+    // Guardar en BD
     const [result] = await pool.execute(
       `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja) VALUES (?, ?, ?, ?)`,
       [idCliente, idCoach, sheetId, `Hoja_${idCliente}`]
     );
 
-    console.log('✅ Guardado en BD, ID:', result.insertId);
-
-    // Sincronizar datos inmediatamente
-    await sincronizarRutinaDesdeSheets(idCliente, sheetId);
-
     res.json({ 
       success: true, 
-      message: 'Hoja vinculada correctamente', 
+      message: '✅ Hoja vinculada correctamente', 
       idMapping: result.insertId 
     });
 
   } catch (error) {
-    console.error('❌ Error completo vinculando hoja:', error);
+    console.error('Error vinculando hoja:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Error interno del servidor: ' + error.message 
+      message: 'Error interno' 
     });
   }
 });
