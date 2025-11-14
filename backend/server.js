@@ -1010,16 +1010,37 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
 
     const sheetId = extraerSheetId(sheetUrl);
     
-    // Verificación simple de acceso
+    // Cargar credenciales
+    const credentials = require('./credentials.json'); // Asegúrate de que este path sea correcto
+    const auth = new google.auth.GoogleAuth({
+      credentials: credentials,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    // Verificar acceso
     try {
-      const testData = await googleSheets.readSheetFromId(sheetId);
-      console.log('✅ Hoja accesible');
-    } catch (error) {
-      console.error('❌ Error acceso:', error.message);
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Problema de permisos. Verifica que el email de la cuenta de servicio sea EXACTO: rayostrength-sheets@rayostrength-434a7.iam.gserviceaccount.com (sin espacios)' 
+      await sheets.spreadsheets.get({
+        spreadsheetId: sheetId,
       });
+    } catch (error) {
+      console.error('Error de Google Sheets:', error);
+      if (error.code === 403) {
+        return res.status(403).json({ 
+          success: false, 
+          message: `Acceso denegado a la hoja. Asegúrate de que esté compartida con: ${credentials.client_email} y con permisos de editor.` 
+        });
+      } else if (error.code === 404) {
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Hoja no encontrada.' 
+        });
+      } else {
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Error de Google Sheets: ' + error.message 
+        });
+      }
     }
 
     // Guardar en BD
@@ -1028,9 +1049,12 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       [idCliente, idCoach, sheetId, `Hoja_${idCliente}`]
     );
 
+    // Sincronizar
+    await sincronizarRutinaDesdeSheets(idCliente, sheetId);
+
     res.json({ 
       success: true, 
-      message: '✅ Hoja vinculada correctamente', 
+      message: 'Hoja vinculada correctamente', 
       idMapping: result.insertId 
     });
 
@@ -1038,7 +1062,7 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
     console.error('Error vinculando hoja:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Error interno' 
+      message: 'Error interno: ' + error.message 
     });
   }
 });
