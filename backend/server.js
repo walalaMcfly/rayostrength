@@ -1010,8 +1010,9 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
     console.log('🔄 Iniciando vinculación para cliente:', idCliente, 'Hoja:', sheetId);
 
     // PRIMERO: Verificar estado de Google Sheets
+    let health;
     try {
-      const health = await googleSheets.healthCheck();
+      health = await googleSheets.healthCheck();
       console.log('🔍 Estado de Google Sheets:', health);
       
       if (!health.healthy) {
@@ -1028,21 +1029,25 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       });
     }
 
-    // SEGUNDO: Verificar que podemos leer la hoja
+    // SEGUNDO: Verificar que podemos leer la hoja específica "4 semanas"
     try {
-      console.log('🔍 Intentando leer la hoja del coach...');
-      const rutinaProcesada = await googleSheets.procesarHojaCoach(sheetId, '4 semanas');
-      console.log('✅ Hoja procesada correctamente, ejercicios encontrados:', rutinaProcesada.ejercicios.length);
+      console.log('🔍 Intentando leer la pestaña "4 semanas"...');
       
-      if (rutinaProcesada.ejercicios.length === 0) {
+      // Intentar leer directamente la pestaña "4 semanas"
+      const testData = await googleSheets.readAnySheet(sheetId, '4 semanas');
+      console.log('✅ Pestaña "4 semanas" leída correctamente, filas:', testData.length);
+      
+      if (!testData || testData.length === 0) {
         return res.status(400).json({ 
           success: false, 
-          message: 'No se encontraron ejercicios en la hoja. Verifica el formato.' 
+          message: 'No se encontraron datos en la pestaña "4 semanas". Verifica que exista y tenga datos.' 
         });
       }
       
+      console.log('📊 Primeras filas de datos:', testData.slice(0, 3));
+      
     } catch (googleError) {
-      console.error('❌ Error procesando hoja del coach:', googleError.message);
+      console.error('❌ Error leyendo pestaña "4 semanas":', googleError.message);
       
       // Obtener información de las credenciales para debugging
       let serviceAccountEmail = 'No disponible';
@@ -1054,13 +1059,47 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
         console.error('Error obteniendo credenciales:', credError);
       }
       
+      let errorMessage = `Error de Google Sheets: ${googleError.message}`;
+      
+      if (googleError.message.includes('PERMISSION_DENIED')) {
+        errorMessage += `\n\n🔧 SOLUCIÓN REQUERIDA: \n1. Comparte la hoja "INFORMATICA CHIQUILLOS" con: ${serviceAccountEmail}\n2. Asegúrate de dar permisos de "Lector"\n3. Verifica que la URL sea correcta`;
+      } else if (googleError.message.includes('NOT_FOUND')) {
+        errorMessage += '\n\n🔧 SOLUCIÓN: \n1. Verifica que la pestaña se llame exactamente "4 semanas"\n2. Asegúrate de que la hoja exista en el proyecto';
+      } else if (googleError.message.includes('UNAUTHENTICATED')) {
+        errorMessage += '\n\n🔧 SOLUCIÓN: \n1. Las credenciales de Google Sheets no son válidas\n2. Verifica las variables de entorno en Railway';
+      }
+      
       return res.status(403).json({ 
         success: false, 
-        message: `Error de Google Sheets: ${googleError.message}. \n\n🔧 SOLUCIÓN: \n1. Comparte la hoja con: ${serviceAccountEmail}\n2. Asegúrate de que tenga permisos de "Lector"\n3. Verifica que la URL sea correcta` 
+        message: errorMessage
       });
     }
 
-    // TERCERO: Guardar en la base de datos
+    // TERCERO: Procesar la hoja para obtener la rutina
+    let rutinaProcesada;
+    try {
+      console.log('🔍 Procesando estructura de la hoja...');
+      rutinaProcesada = await googleSheets.procesarHojaCoach(sheetId, '4 semanas');
+      console.log('✅ Hoja procesada correctamente, ejercicios encontrados:', rutinaProcesada.ejercicios.length);
+      
+      if (rutinaProcesada.ejercicios.length === 0) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'No se encontraron ejercicios en la hoja. Verifica el formato de los datos.' 
+        });
+      }
+      
+      console.log('📋 Ejercicios procesados:', rutinaProcesada.ejercicios.map(e => e.nombre));
+      
+    } catch (procesarError) {
+      console.error('❌ Error procesando hoja del coach:', procesarError);
+      return res.status(400).json({
+        success: false,
+        message: `Error procesando la hoja: ${procesarError.message}. Verifica que los datos estén en el formato correcto.`
+      });
+    }
+
+    // CUARTO: Guardar en la base de datos
     const [result] = await pool.execute(
       `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja) 
        VALUES (?, ?, ?, ?)
@@ -1072,7 +1111,7 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       [idCliente, idCoach, sheetId, `Hoja_${idCliente}`]
     );
 
-    // CUARTO: Sincronizar inmediatamente
+    // QUINTO: Sincronizar inmediatamente
     try {
       await sincronizarRutinaDesdeSheets(idCliente, sheetId);
       console.log('✅ Sincronización completada');
@@ -1085,7 +1124,8 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       success: true, 
       message: '✅ Hoja vinculada correctamente', 
       idMapping: result.insertId,
-      sheetId: sheetId
+      sheetId: sheetId,
+      ejerciciosProcesados: rutinaProcesada.ejercicios.length
     });
 
   } catch (error) {
@@ -1218,10 +1258,34 @@ app.get('/api/debug/sheets-access', authenticateToken, async (req, res) => {
       sheetId: sheetId,
       health: health,
       ejerciciosCount: rutinaProcesada.ejercicios.length,
-      ejercicios: rutinaProcesada.ejercicios.slice(0, 5),
+      primerosEjercicios: rutinaProcesada.ejercicios.slice(0, 5),
       message: '✅ Hoja accesible correctamente'
     });
     
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      sheetUrl: req.query.sheetUrl
+    });
+  }
+});
+
+// Endpoint para verificar credenciales
+app.get('/api/debug/credentials', async (req, res) => {
+  try {
+    const envConfig = require('./config/environment.js');
+    const credentials = envConfig.getGoogleCredentials();
+    const health = await googleSheets.healthCheck();
+    
+    res.json({
+      success: true,
+      health: health,
+      hasCredentials: !!credentials,
+      clientEmail: credentials.client_email,
+      projectId: credentials.project_id,
+      sheetId: process.env.GOOGLE_SHEET_ID
+    });
   } catch (error) {
     res.status(500).json({
       success: false,
