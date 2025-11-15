@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { google } = require('googleapis');
 require('dotenv').config();
 
 const { pool, createTables, testConnection } = require('./config/database');
@@ -992,7 +991,7 @@ app.post('/api/progreso/sesion', authenticateToken, async (req, res) => {
 app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'coach') {
-      return res.status(403).json({ success: false, message: 'Acceso denegado' });
+      return res.status(403).json({ success: false, message: 'Acceso denegado. Solo para coaches.' });
     }
 
     const { idCliente, sheetUrl } = req.body;
@@ -1010,8 +1009,28 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
 
     console.log('🔄 Iniciando vinculación para cliente:', idCliente, 'Hoja:', sheetId);
 
-    // Verificar que podemos leer la hoja usando el nuevo procesador
+    // PRIMERO: Verificar estado de Google Sheets
     try {
+      const health = await googleSheets.healthCheck();
+      console.log('🔍 Estado de Google Sheets:', health);
+      
+      if (!health.healthy) {
+        return res.status(500).json({
+          success: false,
+          message: `Problema con Google Sheets: ${health.message}`
+        });
+      }
+    } catch (healthError) {
+      console.error('❌ Error en health check:', healthError);
+      return res.status(500).json({
+        success: false,
+        message: 'Error de configuración de Google Sheets. Verifica las credenciales.'
+      });
+    }
+
+    // SEGUNDO: Verificar que podemos leer la hoja
+    try {
+      console.log('🔍 Intentando leer la hoja del coach...');
       const rutinaProcesada = await googleSheets.procesarHojaCoach(sheetId, '4 semanas');
       console.log('✅ Hoja procesada correctamente, ejercicios encontrados:', rutinaProcesada.ejercicios.length);
       
@@ -1025,13 +1044,23 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
     } catch (googleError) {
       console.error('❌ Error procesando hoja del coach:', googleError.message);
       
+      // Obtener información de las credenciales para debugging
+      let serviceAccountEmail = 'No disponible';
+      try {
+        const envConfig = require('./config/environment.js');
+        const credentials = envConfig.getGoogleCredentials();
+        serviceAccountEmail = credentials.client_email;
+      } catch (credError) {
+        console.error('Error obteniendo credenciales:', credError);
+      }
+      
       return res.status(403).json({ 
         success: false, 
-        message: `Error de Google Sheets: ${googleError.message}. Verifica que la hoja esté compartida y tenga el formato correcto.` 
+        message: `Error de Google Sheets: ${googleError.message}. \n\n🔧 SOLUCIÓN: \n1. Comparte la hoja con: ${serviceAccountEmail}\n2. Asegúrate de que tenga permisos de "Lector"\n3. Verifica que la URL sea correcta` 
       });
     }
 
-    // Guardar en la base de datos
+    // TERCERO: Guardar en la base de datos
     const [result] = await pool.execute(
       `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja) 
        VALUES (?, ?, ?, ?)
@@ -1043,11 +1072,13 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       [idCliente, idCoach, sheetId, `Hoja_${idCliente}`]
     );
 
-    // Sincronizar inmediatamente
+    // CUARTO: Sincronizar inmediatamente
     try {
       await sincronizarRutinaDesdeSheets(idCliente, sheetId);
+      console.log('✅ Sincronización completada');
     } catch (syncError) {
       console.warn('⚠️ No se pudo sincronizar inmediatamente:', syncError.message);
+      // No fallamos la operación principal por esto
     }
 
     res.json({ 
@@ -1058,7 +1089,7 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
     });
 
   } catch (error) {
-    console.error('❌ Error vinculando hoja:', error);
+    console.error('❌ Error general vinculando hoja:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Error interno del servidor: ' + error.message 
@@ -1101,14 +1132,23 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
       }
 
       // Fallback a rutina general
-      const data = await googleSheets.readSheet('Rayostrenght');
-      const rutinaGeneral = transformSheetDataToRutinas(data);
+      try {
+        const data = await googleSheets.readSheet('Rayostrenght');
+        const rutinaGeneral = transformSheetDataToRutinas(data);
 
-      res.json({
-        personalizada: false,
-        hojaVinculada: false,
-        rutina: rutinaGeneral
-      });
+        res.json({
+          personalizada: false,
+          hojaVinculada: false,
+          rutina: rutinaGeneral
+        });
+      } catch (sheetError) {
+        console.error('Error cargando rutina general:', sheetError);
+        res.json({
+          personalizada: false,
+          hojaVinculada: false,
+          rutina: []
+        });
+      }
     } else {
       res.status(403).json({
         success: false,
@@ -1151,6 +1191,7 @@ async function sincronizarRutinaDesdeSheets(idCliente, sheetId) {
 
 // Utilidades
 function extraerSheetId(url) {
+  if (!url) return null;
   const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return match ? match[1] : null;
 }
@@ -1165,11 +1206,17 @@ app.get('/api/debug/sheets-access', authenticateToken, async (req, res) => {
     }
 
     const sheetId = extraerSheetId(sheetUrl);
+    
+    // Primero verificar health
+    const health = await googleSheets.healthCheck();
+    
+    // Luego procesar la hoja
     const rutinaProcesada = await googleSheets.procesarHojaCoach(sheetId, '4 semanas');
     
     res.json({
       success: true,
       sheetId: sheetId,
+      health: health,
       ejerciciosCount: rutinaProcesada.ejercicios.length,
       ejercicios: rutinaProcesada.ejercicios.slice(0, 5),
       message: '✅ Hoja accesible correctamente'
