@@ -20,13 +20,14 @@ const getGoogleCredentials = () => {
   }
 };
 
+
 const getSheetId = () => {
   const sheetId = process.env.GOOGLE_SHEET_ID;
   if (!sheetId) {
-    console.error('❌ GOOGLE_SHEET_ID no configurado');
-    throw new Error('GOOGLE_SHEET_ID environment variable is required');
+    console.warn('⚠️ GOOGLE_SHEET_ID no configurado (opcional para rutinas personalizadas)');
+    return null; 
   }
-  console.log('📊 Sheet ID:', sheetId);
+  console.log('📊 Sheet ID general:', sheetId);
   return sheetId;
 };
 
@@ -41,6 +42,6 @@ const getJwtSecret = () => {
 
 module.exports = {
   getGoogleCredentials,
-  getSheetId,
+  getSheetId, 
   getJwtSecret
 };

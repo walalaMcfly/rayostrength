@@ -6,11 +6,11 @@ class GoogleSheetsService {
     try {
       this.auth = new google.auth.GoogleAuth({
         credentials: envConfig.getGoogleCredentials(),
-        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+        scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
       });
       
       this.sheets = google.sheets({ version: 'v4', auth: this.auth });
-      this.spreadsheetId = envConfig.getSheetId();
+      this.defaultSpreadsheetId = envConfig.getSheetId(); // Puede ser null
       
       console.log('✅ Google Sheets service initialized successfully');
     } catch (error) {
@@ -21,55 +21,69 @@ class GoogleSheetsService {
 
   async healthCheck() {
     try {
-      await this.sheets.spreadsheets.get({
-        spreadsheetId: this.spreadsheetId,
-      });
-      return { healthy: true, message: 'Google Sheets connection OK' };
+      // Solo verifica si tenemos credenciales válidas
+      await this.auth.getClient();
+      return { 
+        healthy: true, 
+        message: 'Google Sheets connection OK',
+        hasDefaultSheet: !!this.defaultSpreadsheetId
+      };
     } catch (error) {
       return { healthy: false, message: error.message };
     }
   }
 
-  async readSheet(sheetName) {
-  try {
-    console.log(`📖 Reading sheet: ${sheetName}`);
-    
-    const response = await this.sheets.spreadsheets.values.get({
-      spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!A:Z`,
-    });
-    
-    let data = response.data.values || [];
-    console.log(`✅ Read ${data.length} rows from ${sheetName}`);
+  // 🆕 NUEVO MÉTODO: Leer cualquier hoja por ID y nombre de pestaña
+  async readAnySheet(spreadsheetId, sheetName = '4 semanas') {
+    try {
+      console.log(`📖 Reading custom sheet: ${sheetName} from ${spreadsheetId}`);
+      
+      const response = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: spreadsheetId,
+        range: `${sheetName}!A:Z`,
+      });
+      
+      let data = response.data.values || [];
+      console.log(`✅ Read ${data.length} rows from custom sheet`);
 
-    // ✅ FILTRAR FILAS VACÍAS Y ENCONTRAR DONDE EMPIEZAN LOS DATOS
-    if (data.length > 0) {
-      // Buscar la fila que tiene los encabezados (asumiendo que está en la fila 3)
-      let startRow = 0;
-      for (let i = 0; i < data.length; i++) {
-        if (data[i] && data[i].length > 0 && data[i][0]) {
-          // Si encontramos una fila con datos en la primera columna, asumimos que son los encabezados
-          startRow = i;
-          break;
+      // Filtrar filas vacías
+      if (data.length > 0) {
+        let startRow = 0;
+        for (let i = 0; i < data.length; i++) {
+          if (data[i] && data[i].length > 0 && data[i][0]) {
+            startRow = i;
+            break;
+          }
         }
+        console.log(`📊 Datos empiezan en fila: ${startRow + 1}`);
+        data = data.slice(startRow);
       }
 
-      console.log(`📊 Datos empiezan en fila: ${startRow + 1}`);
-      data = data.slice(startRow); // Cortar desde la fila donde empiezan los datos
+      console.log(`📊 Datos después de filtrar: ${data.length} filas`);
+      return data;
+    } catch (error) {
+      console.error(`❌ Error reading custom sheet ${spreadsheetId}:`, error.message);
+      throw new Error(`Failed to read custom sheet: ${error.message}`);
     }
-
-    console.log(`📊 Datos después de filtrar: ${data.length} filas`);
-    return data;
-  } catch (error) {
-    console.error(`❌ Error reading sheet ${sheetName}:`, error.message);
-    throw new Error(`Failed to read ${sheetName}: ${error.message}`);
   }
-}
+
+  // 🔄 MÉTODO ORIGINAL (para compatibilidad con rutinas generales)
+  async readSheet(sheetName) {
+    if (!this.defaultSpreadsheetId) {
+      throw new Error('No default spreadsheet configured. Use readAnySheet() for custom sheets.');
+    }
+    
+    return this.readAnySheet(this.defaultSpreadsheetId, sheetName);
+  }
 
   async updateRow(sheetName, rowIndex, newData) {
     try {
+      if (!this.defaultSpreadsheetId) {
+        throw new Error('No default spreadsheet configured for updates.');
+      }
+
       const response = await this.sheets.spreadsheets.values.update({
-        spreadsheetId: this.spreadsheetId,
+        spreadsheetId: this.defaultSpreadsheetId,
         range: `${sheetName}!A${rowIndex + 1}:Z${rowIndex + 1}`,
         valueInputOption: 'USER_ENTERED',
         resource: { values: [newData] },

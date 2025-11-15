@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { google } = require('googleapis');
 require('dotenv').config();
 
 const { pool, createTables, testConnection } = require('./config/database');
@@ -985,18 +986,7 @@ app.post('/api/progreso/sesion', authenticateToken, async (req, res) => {
   }
 });
 
-const startServer = async () => {
-  try {
-    await createTables();
-    app.listen(PORT, () => {
-      console.log(`Servidor corriendo en http://localhost:${PORT}`);
-    });
-  } catch (error) {
-    console.error('Error iniciando servidor:', error);
-  }
-};
-
-startServer();
+// ==================== ENDPOINTS CORREGIDOS PARA RUTINAS PERSONALIZADAS ====================
 
 // Vincular hoja de Google Sheets a cliente
 app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res) => {
@@ -1008,63 +998,70 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
     const { idCliente, sheetUrl } = req.body;
     const idCoach = req.user.coachId;
 
+    // Extraer ID de la hoja
     const sheetId = extraerSheetId(sheetUrl);
     
-    console.log('🔄 Iniciando autenticación con Google Sheets...');
-
-    // Usar las credenciales desde variables de entorno
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        type: "service_account",
-        project_id: process.env.GOOGLE_PROJECT_ID,
-        private_key_id: process.env.GOOGLE_PRIVATE_KEY_ID,
-        private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-        client_email: process.env.GOOGLE_CLIENT_EMAIL,
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        auth_uri: "https://accounts.google.com/o/oauth2/auth",
-        token_uri: "https://oauth2.googleapis.com/token",
-        auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
-        universe_domain: "googleapis.com"
-      },
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-    });
-
-    const sheets = google.sheets({ version: 'v4', auth });
-    
-    try {
-      // Intentar leer una celda de prueba
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: sheetId,
-        range: 'A1:A1',
+    if (!sheetId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'URL de Google Sheets no válida' 
       });
+    }
+
+    console.log('🔄 Iniciando vinculación para cliente:', idCliente, 'Hoja:', sheetId);
+
+    // Verificar que podemos leer la hoja usando el nuevo procesador
+    try {
+      const rutinaProcesada = await googleSheets.procesarHojaCoach(sheetId, '4 semanas');
+      console.log('✅ Hoja procesada correctamente, ejercicios encontrados:', rutinaProcesada.ejercicios.length);
       
-      console.log('✅ Autenticación con Google Sheets exitosa');
+      if (rutinaProcesada.ejercicios.length === 0) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'No se encontraron ejercicios en la hoja. Verifica el formato.' 
+        });
+      }
       
     } catch (googleError) {
-      console.error('❌ Error de Google Sheets:', googleError.message);
+      console.error('❌ Error procesando hoja del coach:', googleError.message);
+      
       return res.status(403).json({ 
         success: false, 
-        message: `Error de Google Sheets: ${googleError.message}. Verifica que la hoja esté compartida con: ${process.env.GOOGLE_CLIENT_EMAIL}` 
+        message: `Error de Google Sheets: ${googleError.message}. Verifica que la hoja esté compartida y tenga el formato correcto.` 
       });
     }
 
     // Guardar en la base de datos
     const [result] = await pool.execute(
-      `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja) 
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE 
+       id_hoja_google = VALUES(id_hoja_google),
+       nombre_hoja = VALUES(nombre_hoja),
+       activa = TRUE,
+       ultima_sincronizacion = NOW()`,
       [idCliente, idCoach, sheetId, `Hoja_${idCliente}`]
     );
+
+    // Sincronizar inmediatamente
+    try {
+      await sincronizarRutinaDesdeSheets(idCliente, sheetId);
+    } catch (syncError) {
+      console.warn('⚠️ No se pudo sincronizar inmediatamente:', syncError.message);
+    }
 
     res.json({ 
       success: true, 
       message: '✅ Hoja vinculada correctamente', 
-      idMapping: result.insertId 
+      idMapping: result.insertId,
+      sheetId: sheetId
     });
 
   } catch (error) {
     console.error('❌ Error vinculando hoja:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Error interno del servidor' 
+      message: 'Error interno del servidor: ' + error.message 
     });
   }
 });
@@ -1103,6 +1100,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
         }
       }
 
+      // Fallback a rutina general
       const data = await googleSheets.readSheet('Rayostrenght');
       const rutinaGeneral = transformSheetDataToRutinas(data);
 
@@ -1130,16 +1128,8 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
 // Sincronizar rutina desde Google Sheets
 async function sincronizarRutinaDesdeSheets(idCliente, sheetId) {
   try {
-    const sheets = google.sheets({ version: 'v4', auth: googleSheets.auth });
+    const rutinaProcesada = await googleSheets.procesarHojaCoach(sheetId, '4 semanas');
     
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: sheetId,
-      range: 'A:Z',
-    });
-
-    const data = response.data.values || [];
-    const rutinaProcesada = procesarDatosRutina(data);
-
     await pool.execute(
       `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
        VALUES (?, ?) 
@@ -1152,77 +1142,56 @@ async function sincronizarRutinaDesdeSheets(idCliente, sheetId) {
       [idCliente]
     );
 
-    console.log(`✅ Rutina sincronizada para cliente ${idCliente}`);
+    console.log(`✅ Rutina sincronizada para cliente ${idCliente} con ${rutinaProcesada.ejercicios.length} ejercicios`);
   } catch (error) {
     console.error('Error sincronizando rutina:', error);
     throw error;
   }
 }
 
-// Procesar datos de la hoja de cálculo
-function procesarDatosRutina(rows) {
-  if (!rows || rows.length < 2) return { ejercicios: [] };
-
-  const ejercicios = [];
-  
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-    if (row.length >= 7 && row[1]) {
-      const ejercicio = {
-        grupoMuscular: limpiarGrupoMuscular(row[0]),
-        nombre: row[1],
-        video: row[2],
-        series: parseInt(row[3]) || 0,
-        repeticiones: row[4],
-        rir: extraerRIR(row[5]),
-        descanso: row[6],
-        pesoSugerido: row[7] || null,
-        tecnica: row[8] || null
-      };
-      
-      if (ejercicio.nombre && ejercicio.nombre.trim() !== '') {
-        ejercicios.push(ejercicio);
-      }
-    }
-  }
-
-  return {
-    ejercicios,
-    metadata: {
-      totalEjercicios: ejercicios.length,
-      gruposMusculares: [...new Set(ejercicios.map(e => e.grupoMuscular))],
-      fechaProcesamiento: new Date().toISOString()
-    }
-  };
-}
-
 // Utilidades
-function limpiarGrupoMuscular(texto) {
-  if (!texto) return 'General';
-  
-  const mapping = {
-    'CHEST': 'Pecho',
-    'QUADS': 'Piernas', 
-    'GUITE': 'Glúteos',
-    'BACK': 'Espalda',
-    'SHOULDERS': 'Hombros',
-    'BICEPS': 'Bíceps',
-    'TRICEPS': 'Tríceps'
-  };
-  
-  for (const [key, value] of Object.entries(mapping)) {
-    if (texto.toUpperCase().includes(key)) return value;
-  }
-  return 'General';
-}
-
-function extraerRIR(texto) {
-  if (!texto) return null;
-  const match = texto.match(/r\((\d+)\)/);
-  return match ? parseInt(match[1]) : null;
-}
-
 function extraerSheetId(url) {
   const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return match ? match[1] : null;
 }
+
+// Endpoint de debug para probar acceso a hojas
+app.get('/api/debug/sheets-access', authenticateToken, async (req, res) => {
+  try {
+    const { sheetUrl } = req.query;
+    
+    if (!sheetUrl) {
+      return res.status(400).json({ error: 'sheetUrl parameter required' });
+    }
+
+    const sheetId = extraerSheetId(sheetUrl);
+    const rutinaProcesada = await googleSheets.procesarHojaCoach(sheetId, '4 semanas');
+    
+    res.json({
+      success: true,
+      sheetId: sheetId,
+      ejerciciosCount: rutinaProcesada.ejercicios.length,
+      ejercicios: rutinaProcesada.ejercicios.slice(0, 5),
+      message: '✅ Hoja accesible correctamente'
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+const startServer = async () => {
+  try {
+    await createTables();
+    app.listen(PORT, () => {
+      console.log(`Servidor corriendo en http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error('Error iniciando servidor:', error);
+  }
+};
+
+startServer();
