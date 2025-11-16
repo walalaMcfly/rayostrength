@@ -16,7 +16,6 @@ const safeSQLValue = (value) => {
   return value;
 };
 
-
 const sanitizeParams = (params) => {
   return params.map(param => {
     if (param === undefined) {
@@ -50,28 +49,32 @@ const authenticateToken = (req, res, next) => {
     });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
     if (err) {
+      console.log('❌ JWT Verification Error:', err);
       return res.status(403).json({
         success: false,
         message: 'Token inválido o expirado'
       });
     }
     
-    if (user.role === 'coach') {
+    console.log('🔐 JWT Decoded:', decoded);
+    
+    if (decoded.role === 'coach') {
       req.user = {
-        coachId: user.userId,
-        email: user.email,
-        role: user.role
+        coachId: decoded.coachId,
+        email: decoded.email,
+        role: decoded.role
       };
     } else {
       req.user = {
-        userId: user.userId,
-        email: user.email,
-        role: user.role
+        userId: decoded.userId,
+        email: decoded.email,
+        role: decoded.role
       };
     }
     
+    console.log('👤 User object final:', req.user);
     next();
   });
 };
@@ -152,27 +155,32 @@ app.post('/api/auth/login', async (req, res) => {
     let user = null;
     let role = 'user';
 
-    const [users] = await pool.execute(
-      'SELECT * FROM Usuario WHERE email = ?',
+    console.log('🔐 Intentando login para:', email);
+
+    const [coaches] = await pool.execute(
+      'SELECT * FROM Coach WHERE email = ?',
       [email]
     );
 
-    if (users.length > 0) {
-      user = users[0];
-      role = 'user';
+    if (coaches.length > 0) {
+      console.log('✅ Coach encontrado:', coaches[0].email);
+      user = coaches[0];
+      role = 'coach';
     } else {
-      const [coaches] = await pool.execute(
-        'SELECT * FROM Coach WHERE email = ?',
+      const [users] = await pool.execute(
+        'SELECT * FROM Usuario WHERE email = ?',
         [email]
       );
 
-      if (coaches.length > 0) {
-        user = coaches[0];
-        role = 'coach';
+      if (users.length > 0) {
+        console.log('✅ Usuario encontrado:', users[0].email);
+        user = users[0];
+        role = 'user';
       }
     }
 
     if (!user) {
+      console.log('❌ Usuario no encontrado:', email);
       return res.status(401).json({
         success: false,
         message: 'Email o contraseña incorrectos'
@@ -181,11 +189,14 @@ app.post('/api/auth/login', async (req, res) => {
 
     const validPassword = await bcrypt.compare(contraseña, user.contraseña);
     if (!validPassword) {
+      console.log('❌ Contraseña incorrecta para:', email);
       return res.status(401).json({
         success: false,
         message: 'Email o contraseña incorrectos'
       });
     }
+
+    console.log('✅ Contraseña válida para:', email);
 
     let tokenPayload;
     if (role === 'user') {
@@ -196,11 +207,13 @@ app.post('/api/auth/login', async (req, res) => {
       };
     } else {
       tokenPayload = { 
-        coachId: user.id_coach, 
+        coachId: user.id_coach,
         email: user.email, 
         role: 'coach' 
       };
     }
+
+    console.log('🎫 Token payload creado:', tokenPayload);
 
     const token = jwt.sign(
       tokenPayload,
@@ -245,7 +258,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error en login:', error);
+    console.error('❌ Error en login:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor'
@@ -996,19 +1009,46 @@ app.post('/api/progreso/sesion', authenticateToken, async (req, res) => {
   }
 });
 
-
-// Vincular hoja de Google Sheets a cliente
 app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res) => {
   let connection;
   try {
+    console.log('🔐 User object recibido:', req.user);
+    
     if (req.user.role !== 'coach') {
-      return res.status(403).json({ success: false, message: 'Acceso denegado. Solo para coaches.' });
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Acceso denegado. Solo para coaches.' 
+      });
     }
 
     const { idCliente, sheetUrl } = req.body;
     const idCoach = req.user.coachId;
 
-    // 🛠️ VALIDACIÓN EXTRA: Asegurar que los parámetros necesarios existen
+    console.log('📥 Datos recibidos:', { idCliente, sheetUrl, idCoach });
+
+    if (!idCoach || isNaN(idCoach)) {
+      console.log('❌ CoachId inválido:', idCoach);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'ID de coach inválido. El coach no está correctamente autenticado.' 
+      });
+    }
+
+    const [coachExists] = await pool.execute(
+      'SELECT id_coach, nombre, apellido FROM Coach WHERE id_coach = ?',
+      [idCoach]
+    );
+    
+    if (coachExists.length === 0) {
+      console.log('❌ Coach no encontrado en BD con id:', idCoach);
+      return res.status(404).json({
+        success: false,
+        message: 'Coach no encontrado en la base de datos'
+      });
+    }
+
+    console.log('✅ Coach verificado:', coachExists[0]);
+
     if (!idCliente || !sheetUrl) {
       return res.status(400).json({ 
         success: false, 
@@ -1017,7 +1057,6 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
     }
 
     const sheetId = extraerSheetId(sheetUrl);
-    
     if (!sheetId) {
       return res.status(400).json({ 
         success: false, 
@@ -1025,16 +1064,18 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       });
     }
 
-    console.log('🔄 Iniciando vinculación para cliente:', idCliente, 'Hoja:', sheetId);
+    console.log('🔄 Iniciando vinculación para:', {
+      coach: coachExists[0].nombre + ' ' + coachExists[0].apellido,
+      cliente: idCliente,
+      hoja: sheetId
+    });
 
-    // Obtener conexión para transacción
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    // Verificar estado de Google Sheets
     try {
       const health = await googleSheets.healthCheck();
-      console.log('🔍 Estado de Google Sheets:', health);
+      console.log('🔍 Google Sheets health:', health);
       
       if (!health.healthy) {
         await connection.rollback();
@@ -1043,19 +1084,8 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
           message: `Problema con Google Sheets: ${health.message}`
         });
       }
-    } catch (healthError) {
-      await connection.rollback();
-      console.error('❌ Error en health check:', healthError);
-      return res.status(500).json({
-        success: false,
-        message: 'Error de configuración de Google Sheets.'
-      });
-    }
 
-    // Leer y procesar la hoja
-    try {
-      console.log('🔍 Leyendo hoja...');
-      
+      console.log('📊 Leyendo hoja de Google Sheets...');
       const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
       console.log('✅ Datos crudos leídos, filas:', rawData.length);
       
@@ -1078,22 +1108,19 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
         });
       }
 
-      // 🛠️ VALIDACIÓN CRÍTICA: Asegurar que todos los valores para SQL sean válidos
-      const safeIdCliente = safeSQLValue(parseInt(idCliente));
-      const safeIdCoach = safeSQLValue(parseInt(idCoach));
-      const safeSheetId = safeSQLValue(sheetId);
-      const safeNombreHoja = safeSQLValue(`Hoja_${idCliente}`);
-      
-      console.log('💾 Parámetros sanitizados:', {
+      const safeIdCliente = parseInt(idCliente);
+      const safeIdCoach = parseInt(idCoach);
+      const safeSheetId = sheetId;
+      const safeNombreHoja = `Hoja_${idCliente}`;
+
+      console.log('💾 Parámetros para guardar:', {
         idCliente: safeIdCliente,
         idCoach: safeIdCoach,
         sheetId: safeSheetId,
         nombreHoja: safeNombreHoja
       });
 
-      // 🛠️ GUARDADO CON TRANSACCIÓN Y PARÁMETROS SANITIZADOS
       console.log('💾 Guardando en HojasClientes...');
-      
       const [result] = await connection.execute(
         `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja) 
          VALUES (?, ?, ?, ?)
@@ -1102,17 +1129,12 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
          nombre_hoja = VALUES(nombre_hoja),
          activa = TRUE,
          ultima_sincronizacion = NOW()`,
-        sanitizeParams([safeIdCliente, safeIdCoach, safeSheetId, safeNombreHoja])
+        [safeIdCliente, safeIdCoach, safeSheetId, safeNombreHoja]
       );
 
-      console.log('✅ Guardado en HojasClientes, ID:', result.insertId);
+      console.log('✅ Guardado en HojasClientes, resultado:', result);
 
-      // 🛠️ GUARDADO EN CACHE CON VALIDACIÓN EXTRA
       const datosRutinaJSON = JSON.stringify(rutinaProcesada);
-      if (!datosRutinaJSON) {
-        throw new Error('Error generando JSON de la rutina');
-      }
-
       console.log('💾 Guardando en CacheRutinas...');
       
       const [cacheResult] = await connection.execute(
@@ -1121,25 +1143,28 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
          ON DUPLICATE KEY UPDATE 
          datos_rutina = VALUES(datos_rutina), 
          fecha_actualizacion = NOW()`,
-        sanitizeParams([safeIdCliente, datosRutinaJSON])
+        [safeIdCliente, datosRutinaJSON]
       );
 
       console.log('✅ Guardado en CacheRutinas');
 
-      // Confirmar transacción
       await connection.commit();
 
       res.json({ 
         success: true, 
         message: '✅ Hoja vinculada correctamente', 
-        idMapping: result.insertId,
-        sheetId: sheetId,
-        ejerciciosProcesados: rutinaProcesada.ejercicios.length
+        coach: coachExists[0],
+        detalles: {
+          cliente: idCliente,
+          ejerciciosProcesados: rutinaProcesada.ejercicios.length,
+          sheetId: sheetId,
+          gruposMusculares: rutinaProcesada.metadata.gruposMusculares
+        }
       });
 
     } catch (googleError) {
       await connection.rollback();
-      console.error('❌ Error en procesamiento:', googleError.message);
+      console.error('❌ Error en procesamiento:', googleError);
       
       let errorMessage = `Error: ${googleError.message}`;
       
@@ -1147,11 +1172,9 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
         errorMessage += `\n\n🔧 SOLUCIÓN: Comparte la hoja con: rayostrength-sheets@rayostrength-434a7.iam.gserviceaccount.com`;
       } else if (googleError.message.includes('NOT_FOUND')) {
         errorMessage += '\n\n🔧 SOLUCIÓN: Verifica que exista la pestaña "4 semanas"';
-      } else if (googleError.message.includes('undefined')) {
-        errorMessage += '\n\n🔧 SOLUCIÓN: Error de datos - contacta al administrador';
       }
       
-      return res.status(403).json({ 
+      return res.status(500).json({ 
         success: false, 
         message: errorMessage
       });
@@ -1174,7 +1197,6 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
   }
 });
 
-// 🛠️ FUNCIÓN DE PROCESAMIENTO MEJORADA
 function procesarRutinaColumnasFijas(rawData) {
   if (!rawData || rawData.length < 2) {
     return { ejercicios: [], metadata: { totalEjercicios: 0 } };
@@ -1185,7 +1207,6 @@ function procesarRutinaColumnasFijas(rawData) {
   console.log('🔍 Procesando con columnas fijas...');
   console.log('📊 Total de filas:', rawData.length);
 
-  // Buscar dónde empiezan los datos reales
   let startRow = 1;
   
   for (let i = 1; i < Math.min(10, rawData.length); i++) {
@@ -1206,21 +1227,19 @@ function procesarRutinaColumnasFijas(rawData) {
     
     if (!row || row.length < 9) continue;
 
-    // 🛠️ GARANTIZAR que ningún valor sea undefined
-    const grupoMuscular = safeSQLValue(row[2]);        // Columna C
-    const nombreEjercicio = safeSQLValue(row[3]);      // Columna D
-    const video = safeSQLValue(row[4]);               // Columna E
-    const series = safeSQLValue(row[5]);              // Columna F
-    const reps = safeSQLValue(row[6]);                // Columna G
-    const rir = safeSQLValue(row[7]);                 // Columna H
-    const descanso = safeSQLValue(row[8]);            // Columna I
+    const grupoMuscular = safeSQLValue(row[2]);
+    const nombreEjercicio = safeSQLValue(row[3]);
+    const video = safeSQLValue(row[4]);
+    const series = safeSQLValue(row[5]);
+    const reps = safeSQLValue(row[6]);
+    const rir = safeSQLValue(row[7]);
+    const descanso = safeSQLValue(row[8]);
 
     if (!nombreEjercicio || nombreEjercicio.toString().trim() === '') continue;
 
     const nombreLimpio = nombreEjercicio.toString().trim();
     if (nombreLimpio.toUpperCase().includes('EXERCISE') || nombreLimpio.includes('**')) continue;
 
-    // 🛠️ CREAR EJERCICIO CON VALORES GARANTIZADOS
     const ejercicio = {
       grupoMuscular: limpiarTexto(grupoMuscular) || 'General',
       nombre: nombreLimpio,
@@ -1263,7 +1282,6 @@ function extraerRIRSimple(texto) {
   return numberMatch ? parseInt(numberMatch[0]) : null;
 }
 
-// Obtener rutina personalizada de un cliente
 app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, async (req, res) => {
   try {
     const { idCliente } = req.params;
@@ -1297,7 +1315,6 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
         }
       }
 
-      // Fallback a rutina general
       try {
         const data = await googleSheets.readSheet('Rayostrenght');
         const rutinaGeneral = transformSheetDataToRutinas(data);
@@ -1336,43 +1353,43 @@ function extraerSheetId(url) {
   return match ? match[1] : null;
 }
 
-// Endpoint de debug mejorado
-app.get('/api/debug/sheets-safe', authenticateToken, async (req, res) => {
-  try {
-    const { sheetUrl } = req.query;
-    
-    if (!sheetUrl) {
-      return res.status(400).json({ error: 'sheetUrl parameter required' });
+app.get('/api/debug/token-info', authenticateToken, (req, res) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (token) {
+    try {
+      const decoded = jwt.decode(token);
+      res.json({
+        tokenDecoded: decoded,
+        userFromMiddleware: req.user,
+        message: '✅ Token decodificado correctamente'
+      });
+    } catch (error) {
+      res.json({
+        error: 'No se pudo decodificar el token',
+        token: token.substring(0, 50) + '...'
+      });
     }
+  } else {
+    res.status(401).json({ error: 'No hay token' });
+  }
+});
 
-    const sheetId = extraerSheetId(sheetUrl);
-    const health = await googleSheets.healthCheck();
-    const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
-    const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
-    
-    // Simular guardado para test
-    const testParams = [1, 1, sheetId, 'test'];
-    const sanitizedTestParams = sanitizeParams(testParams);
+app.get('/api/debug/coaches-detailed', async (req, res) => {
+  try {
+    const [coaches] = await pool.execute(
+      `SELECT id_coach, nombre, apellido, email, especialidad 
+       FROM Coach`
+    );
     
     res.json({
-      success: true,
-      sheetId: sheetId,
-      health: health,
-      rawRows: rawData.length,
-      ejerciciosCount: rutinaProcesada.ejercicios.length,
-      primerosEjercicios: rutinaProcesada.ejercicios.slice(0, 3),
-      testSanitization: {
-        original: testParams,
-        sanitized: sanitizedTestParams
-      },
-      message: '✅ Sistema de sanitización funcionando'
+      totalCoaches: coaches.length,
+      coaches: coaches
     });
-    
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    console.error('Error obteniendo coaches:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
