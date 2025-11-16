@@ -10,7 +10,7 @@ class GoogleSheetsService {
       });
       
       this.sheets = google.sheets({ version: 'v4', auth: this.auth });
-      this.defaultSpreadsheetId = envConfig.getSheetId(); // Puede ser null
+      this.defaultSpreadsheetId = envConfig.getSheetId();
       
       console.log('✅ Google Sheets service initialized successfully');
     } catch (error) {
@@ -21,7 +21,6 @@ class GoogleSheetsService {
 
   async healthCheck() {
     try {
-      // Solo verifica si tenemos credenciales válidas
       await this.auth.getClient();
       return { 
         healthy: true, 
@@ -33,46 +32,31 @@ class GoogleSheetsService {
     }
   }
 
-  // 🆕 NUEVO MÉTODO: Leer cualquier hoja por ID y nombre de pestaña
+  // Leer cualquier hoja
   async readAnySheet(spreadsheetId, sheetName = '4 semanas') {
     try {
-      console.log(`📖 Reading custom sheet: ${sheetName} from ${spreadsheetId}`);
+      console.log(`📖 Reading: ${sheetName} from ${spreadsheetId}`);
       
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: spreadsheetId,
         range: `${sheetName}!A:Z`,
       });
       
-      let data = response.data.values || [];
-      console.log(`✅ Read ${data.length} rows from custom sheet`);
-
-      // Filtrar filas vacías
-      if (data.length > 0) {
-        let startRow = 0;
-        for (let i = 0; i < data.length; i++) {
-          if (data[i] && data[i].length > 0 && data[i][0]) {
-            startRow = i;
-            break;
-          }
-        }
-        console.log(`📊 Datos empiezan en fila: ${startRow + 1}`);
-        data = data.slice(startRow);
-      }
-
-      console.log(`📊 Datos después de filtrar: ${data.length} filas`);
+      const data = response.data.values || [];
+      console.log(`✅ Read ${data.length} raw rows`);
+      
       return data;
     } catch (error) {
-      console.error(`❌ Error reading custom sheet ${spreadsheetId}:`, error.message);
-      throw new Error(`Failed to read custom sheet: ${error.message}`);
+      console.error(`❌ Error reading sheet:`, error.message);
+      throw new Error(`Failed to read sheet: ${error.message}`);
     }
   }
 
-  // 🔄 MÉTODO ORIGINAL (para compatibilidad con rutinas generales)
+  // Para rutinas generales
   async readSheet(sheetName) {
     if (!this.defaultSpreadsheetId) {
-      throw new Error('No default spreadsheet configured. Use readAnySheet() for custom sheets.');
+      throw new Error('No default spreadsheet configured');
     }
-    
     return this.readAnySheet(this.defaultSpreadsheetId, sheetName);
   }
 
