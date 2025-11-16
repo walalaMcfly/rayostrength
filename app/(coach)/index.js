@@ -36,8 +36,6 @@ export default function CoachDashboard() {
       setError(null);
       
       const token = await AsyncStorage.getItem('userToken');
-      
-      // Cargar datos de clientes desde la API
       const response = await fetch(`${API_URL}/coach/clientes`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -73,8 +71,6 @@ export default function CoachDashboard() {
     } catch (error) {
       console.error('Error cargando datos del coach:', error);
       setError(error.message);
-      
-      // Datos de ejemplo si hay error
       setStats({
         totalClientes: 12,
         rutinasCompletadas: 45,
@@ -90,36 +86,36 @@ export default function CoachDashboard() {
     router.push('/clients');
   };
 
-  const handleLogout = async () => {
-    try {
-      Alert.alert(
-        'Cerrar Sesión',
-        '¿Estás seguro de que quieres cerrar sesión?',
-        [
-          {
-            text: 'Cancelar',
-            style: 'cancel'
-          },
-          {
-            text: 'Cerrar Sesión',
-            style: 'destructive',
-            onPress: async () => {
-              console.log('🔄 Iniciando proceso de logout...');
-              
-              await AsyncStorage.multiRemove(['userToken', 'userData', 'userRole']);
-              console.log('✅ AsyncStorage limpiado');
-              
-              router.replace('/');
-              console.log('✅ Navegación al login completada');
-            }
+const handleLogout = async () => {
+  try {
+    Alert.alert(
+      'Cerrar Sesión',
+      '¿Estás seguro de que quieres cerrar sesión?',
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel'
+        },
+        {
+          text: 'Cerrar Sesión', 
+          style: 'destructive',
+          onPress: async () => {
+            console.log('🚀 Cerrando sesión de coach...');  
+            await AsyncStorage.multiRemove(['userToken', 'userData', 'userRole']);
+            console.log('✅ Storage limpiado para coach');
+            router.replace('/');
+            
+            console.log('✅ Coach redirigido al login');
           }
-        ]
-      );
-    } catch (error) {
-      console.error('Error en logout:', error);
-      Alert.alert('Error', 'No se pudo cerrar sesión');
-    }
-  };
+        }
+      ]
+    );
+  } catch (error) {
+    console.error('Error en logout coach:', error);
+    await AsyncStorage.multiRemove(['userToken', 'userData', 'userRole']);
+    router.replace('/');
+  }
+};
 
   if (loading) {
     return (

@@ -29,6 +29,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
+  
 
 const handleLogin = async () => {
   try {
@@ -57,13 +58,27 @@ const handleLogin = async () => {
     console.log('📨 Respuesta completa del login:', data);
 
     if (data.success) {
-      // Guardar token y datos del usuario (que ahora incluye el rol)
       await AsyncStorage.setItem('userToken', data.token);
       await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+
+
+    if (data.success) {
+  await AsyncStorage.setItem('userToken', data.token);
+  await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+  await AsyncStorage.setItem('userRole', data.user.role); 
+  
+  console.log('✅ Login exitoso. Rol:', data.user.role);
+  
+  if (data.user.role === 'coach') {
+    console.log('👨‍💼 Redirigiendo a área de coach');
+    router.replace('/(coach)');
+  } else {
+    console.log('👤 Redirigiendo a área de cliente');
+    router.replace('/(client)/(drawer)/(tabs)/rutinas'); 
+  }
+}
       
       console.log('Login exitoso. Rol:', data.user.role);
-      
-      // Redirigir según el rol
       if (data.user.role === 'coach') {
         console.log(' Redirigiendo a área de coach');
         router.replace('/(coach)');

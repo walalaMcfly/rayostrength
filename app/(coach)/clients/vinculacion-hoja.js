@@ -100,12 +100,12 @@ export default function VinculacionHojaScreen() {
         <Text style={styles.infoTitle}>📋 Formato Esperado:</Text>
         <Text style={styles.infoText}>
           A: Grupo muscular{'\n'}
-          B: Ejercicio{'\n'} 
+          B: Exercise{'\n'} 
           C: Video{'\n'}
-          D: Series{'\n'}
+          D: Sets{'\n'}
           E: Repeticiones{'\n'}
           F: RIR{'\n'}
-          G: Descanso
+          G: Rest
         </Text>
       </View>
     </ScrollView>

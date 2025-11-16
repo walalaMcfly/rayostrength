@@ -1255,11 +1255,9 @@ function procesarRutinaColumnasFijas(rawData) {
       ejercicios.push(ejercicio);
     }
   }
-
   console.log(`🎯 Total de ejercicios procesados: ${ejercicios.length}`);
-
   return {
-    ejercicios,
+    ejercicios: ejercicios || [],
     metadata: {
       totalEjercicios: ejercicios.length,
       gruposMusculares: [...new Set(ejercicios.map(e => e.grupoMuscular))],
@@ -1305,16 +1303,51 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
         );
 
         if (cache.length > 0) {
+          // ✅ CORRECCIÓN: Manejar el caso donde datos_rutina no es JSON válido
+          let rutinaData;
+          const datosCache = cache[0].datos_rutina;
+          
+          console.log('📦 Tipo de datos en cache:', typeof datosCache);
+          console.log('📦 Primeros 200 chars de datos_rutina:', 
+            typeof datosCache === 'string' ? datosCache.substring(0, 200) : datosCache);
+          
+          try {
+            // Intentar parsear como JSON
+            if (typeof datosCache === 'string') {
+              rutinaData = JSON.parse(datosCache);
+            } else if (typeof datosCache === 'object' && datosCache !== null) {
+              // Si ya es un objeto, usarlo directamente
+              rutinaData = datosCache;
+            } else {
+              console.error('❌ Tipo de datos inesperado en cache:', typeof datosCache);
+              rutinaData = { ejercicios: [], metadata: { error: 'Formato inválido' } };
+            }
+          } catch (parseError) {
+            console.error('❌ Error parseando JSON del cache:', parseError);
+            console.error('❌ Contenido problemático:', datosCache);
+            
+            // Si el JSON es inválido, crear una estructura vacía
+            rutinaData = { 
+              ejercicios: [], 
+              metadata: { 
+                error: 'JSON corrupto en base de datos',
+                totalEjercicios: 0,
+                fechaProcesamiento: new Date().toISOString()
+              }
+            };
+          }
+
           return res.json({
             personalizada: true,
             coach: `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}`,
             hojaVinculada: true,
             ultimaSincronizacion: hojas[0].ultima_sincronizacion,
-            rutina: JSON.parse(cache[0].datos_rutina)
+            rutina: rutinaData
           });
         }
       }
 
+      // Fallback a rutina general
       try {
         const data = await googleSheets.readSheet('Rayostrenght');
         const rutinaGeneral = transformSheetDataToRutinas(data);
@@ -1325,6 +1358,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
           rutina: rutinaGeneral
         });
       } catch (sheetError) {
+        console.error('Error con rutina general:', sheetError);
         res.json({
           personalizada: false,
           hojaVinculada: false,
@@ -1342,7 +1376,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
     console.error('Error obteniendo rutina personalizada:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al obtener la rutina'
+      message: 'Error al obtener la rutina: ' + error.message
     });
   }
 });
@@ -1403,5 +1437,122 @@ const startServer = async () => {
     console.error('Error iniciando servidor:', error);
   }
 };
+
+// Diagnosticar cache actual
+app.get('/api/debug/ver-cache-cliente/:idCliente', authenticateToken, async (req, res) => {
+  try {
+    const { idCliente } = req.params;
+
+    const [cache] = await pool.execute(
+      `SELECT datos_rutina, fecha_actualizacion FROM CacheRutinas 
+       WHERE id_cliente = ? 
+       ORDER BY fecha_actualizacion DESC LIMIT 1`,
+      [idCliente]
+    );
+
+    if (cache.length === 0) {
+      return res.json({ 
+        success: true, 
+        message: 'No hay cache para este cliente', 
+        cache: null 
+      });
+    }
+
+    const cacheData = cache[0];
+    
+    // Analizar el contenido
+    let contenidoAnalizado = 'No se pudo analizar';
+    let esJSONValido = false;
+    
+    try {
+      if (typeof cacheData.datos_rutina === 'string') {
+        JSON.parse(cacheData.datos_rutina);
+        contenidoAnalizado = 'JSON válido';
+        esJSONValido = true;
+      } else {
+        contenidoAnalizado = `Tipo: ${typeof cacheData.datos_rutina}`;
+      }
+    } catch (e) {
+      contenidoAnalizado = 'JSON INVÁLIDO: ' + e.message;
+    }
+    
+    res.json({
+      success: true,
+      cache: {
+        tipo: typeof cacheData.datos_rutina,
+        contenido: cacheData.datos_rutina,
+        longitud: cacheData.datos_rutina ? cacheData.datos_rutina.length : 0,
+        fecha: cacheData.fecha_actualizacion,
+        analisis: contenidoAnalizado,
+        esJSONValido: esJSONValido
+      }
+    });
+
+  } catch (error) {
+    console.error('Error diagnosticando cache:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint para reparar cache corrupto
+app.post('/api/debug/reparar-cache-cliente/:idCliente', authenticateToken, async (req, res) => {
+  try {
+    const { idCliente } = req.params;
+
+    if (req.user.role !== 'coach') {
+      return res.status(403).json({ success: false, message: 'Solo coaches pueden reparar cache' });
+    }
+
+    // Obtener la hoja vinculada
+    const [hojas] = await pool.execute(
+      `SELECT id_hoja_google FROM HojasClientes WHERE id_cliente = ? AND activa = TRUE`,
+      [idCliente]
+    );
+
+    if (hojas.length === 0) {
+      return res.status(404).json({ success: false, message: 'No hay hoja vinculada para este cliente' });
+    }
+
+    const sheetId = hojas[0].id_hoja_google;
+
+    console.log('🔧 Reparando cache para cliente:', idCliente, 'Sheet:', sheetId);
+
+    // Reprocesar la hoja
+    const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
+    const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
+
+    // ✅ Asegurar que se guarda como JSON string válido
+    const datosRutinaJSON = JSON.stringify(rutinaProcesada);
+    
+    console.log('💾 Guardando JSON en cache:', typeof datosRutinaJSON);
+    console.log('💾 Longitud del JSON:', datosRutinaJSON.length);
+    console.log('💾 Ejercicios procesados:', rutinaProcesada.ejercicios.length);
+
+    const [result] = await pool.execute(
+      `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
+       VALUES (?, ?) 
+       ON DUPLICATE KEY UPDATE 
+       datos_rutina = VALUES(datos_rutina), 
+       fecha_actualizacion = NOW()`,
+      [idCliente, datosRutinaJSON]
+    );
+
+    console.log('✅ Cache reparado para cliente:', idCliente);
+
+    res.json({
+      success: true,
+      message: 'Cache reparado correctamente',
+      ejerciciosProcesados: rutinaProcesada.ejercicios.length,
+      cacheActualizado: result.affectedRows
+    });
+
+  } catch (error) {
+    console.error('Error reparando cache:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error reparando cache: ' + error.message
+    });
+  }
+});
 
 startServer();
