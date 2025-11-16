@@ -45,13 +45,9 @@ export default function ClientDetail() {
       setLoading(true);
       const token = await AsyncStorage.getItem('userToken');
       
-      // Cargar todos los datos en paralelo
-      await Promise.all([
-        loadDatosCliente(token),
-        loadWellnessData(token),
-        loadProgresoData(token),
-        loadRutinaData(token)
-      ]);
+      // Cargar todos los datos desde el nuevo endpoint
+      await loadDatosRealesCliente(token);
+      await loadRutinaData(token);
       
     } catch (error) {
       console.error('Error cargando datos del cliente:', error);
@@ -62,10 +58,9 @@ export default function ClientDetail() {
     }
   };
 
-  const loadDatosCliente = async (token) => {
+  const loadDatosRealesCliente = async (token) => {
     try {
-      // Usar el endpoint de coach/clientes para obtener datos específicos
-      const response = await fetch(`${API_URL}/coach/clientes`, {
+      const response = await fetch(`${API_URL}/coach/cliente/${id}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -75,144 +70,94 @@ export default function ClientDetail() {
 
       if (response.ok) {
         const result = await response.json();
-        if (result.success && result.clientes) {
-          // Encontrar el cliente específico por ID
-          const clienteEncontrado = result.clientes.find(c => c.id_usuario == id);
-          if (clienteEncontrado) {
-            setCliente(clienteEncontrado);
-            return;
-          }
-        }
-      }
-      
-      // Fallback con datos básicos si no se encuentra
-      setCliente({
-        id_usuario: id,
-        nombre: 'Cliente',
-        apellido: 'Ejemplo',
-        email: 'cliente@ejemplo.com',
-        edad: 28,
-        sexo: 'M',
-        peso_actual: '75 kg',
-        altura: '175 cm',
-        rutinas_completadas: 0,
-        ultima_sesion: null
-      });
-      
-    } catch (error) {
-      console.error('Error cargando datos del cliente:', error);
-    }
-  };
-
-  const loadWellnessData = async (token) => {
-    try {
-      // Obtener datos de wellness del día actual
-      const today = new Date().toISOString().split('T')[0];
-      
-      // Usar el endpoint de wellness existente - necesitaríamos crear uno específico para coach
-      const response = await fetch(`${API_URL}/progreso/datos-reales`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.progressData && result.progressData.wellnessPromedio) {
-          // Crear datos de wellness basados en el promedio
-          const wellnessPromedio = result.progressData.wellnessPromedio;
-          if (wellnessPromedio.length > 0) {
-            const ultimoValor = wellnessPromedio[wellnessPromedio.length - 1];
-            setWellnessData({
-              fecha: today,
-              energia: Math.min(10, Math.max(1, ultimoValor + 2)),
-              sueno: Math.min(10, Math.max(1, ultimoValor + 1)),
-              estres: Math.min(10, Math.max(1, 10 - ultimoValor)),
-              dolor_muscular: Math.min(10, Math.max(1, 5)),
-              motivacion: Math.min(10, Math.max(1, ultimoValor + 3)),
-              apetito: Math.min(10, Math.max(1, ultimoValor + 1)),
-              notas: 'Datos basados en promedios recientes'
-            });
-            return;
-          }
-        }
-      }
-      
-      // Datos de ejemplo si no hay datos reales
-      setWellnessData({
-        fecha: today,
-        energia: 7,
-        sueno: 6,
-        estres: 4,
-        dolor_muscular: 5,
-        motivacion: 8,
-        apetito: 7,
-        notas: 'Cliente se siente bien hoy, buena energía para entrenar'
-      });
-      
-    } catch (error) {
-      console.error('Error cargando wellness:', error);
-    }
-  };
-
-  const loadProgresoData = async (token) => {
-    try {
-      // Usar el endpoint de progreso/datos-reales
-      const response = await fetch(`${API_URL}/progreso/datos-reales`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          setProgresoData({
-            rutinas_completadas: result.estadisticas?.rutinasCompletadas || 0,
-            total_rutinas: result.estadisticas?.totalRutinas || 0,
-            porcentaje_completitud: result.estadisticas?.porcentajeCompletitud || 0,
-            promedio_rir: result.estadisticas?.promedioRIR || 0,
-            mejor_rpe: result.estadisticas?.mejorRPE || 0,
-            volumen_semanal: result.estadisticas?.volumenSemanal || 0,
-            fuerza_progreso: 15, // Valor calculado
-            consistencia: 85, // Valor calculado
-            ultimos_ejercicios: [
-              { ejercicio: 'Press Banca', peso: '80kg', reps: 8, fecha: '2024-01-20' },
-              { ejercicio: 'Sentadillas', peso: '100kg', reps: 6, fecha: '2024-01-19' },
-              { ejercicio: 'Peso Muerto', peso: '120kg', reps: 4, fecha: '2024-01-18' }
-            ]
+        if (result.success && result.cliente) {
+          const clienteData = result.cliente;
+          
+          // Actualizar estado del cliente con datos REALES
+          setCliente({
+            id_usuario: clienteData.id_usuario,
+            nombre: clienteData.nombre,
+            apellido: clienteData.apellido,
+            email: clienteData.email,
+            edad: clienteData.edad,
+            sexo: clienteData.sexo,
+            peso_actual: clienteData.peso_actual,
+            altura: clienteData.altura,
+            objetivo: clienteData.objetivo,
+            experiencia: clienteData.experiencia,
+            fecha_registro: clienteData.fecha_registro
           });
+
+          // Actualizar datos de progreso con datos REALES
+          setProgresoData({
+            rutinas_completadas: clienteData.rutinas_completadas,
+            total_sesiones: clienteData.total_sesiones,
+            porcentaje_completitud: clienteData.porcentaje_completitud,
+            consistencia: clienteData.consistencia,
+            dias_entrenados_mes: clienteData.dias_entrenados_mes,
+            estado: clienteData.estado,
+            ultima_sesion: clienteData.ultima_sesion,
+            pesos_maximos: clienteData.pesos_maximos || [],
+            ejercicios_recientes: clienteData.ejercicios_recientes || []
+          });
+
+          // Actualizar datos de wellness con datos REALES
+          if (clienteData.wellness_hoy) {
+            setWellnessData({
+              fecha: new Date().toISOString().split('T')[0],
+              ...clienteData.wellness_hoy,
+              notas: 'Encuesta completada hoy'
+            });
+          } else {
+            setWellnessData(null); // No hay datos de wellness hoy
+          }
+
           return;
         }
       }
       
-      // Datos de ejemplo
-      setProgresoData({
-        rutinas_completadas: 12,
-        total_rutinas: 15,
-        porcentaje_completitud: 80,
-        promedio_rir: 2.1,
-        mejor_rpe: 8.5,
-        volumen_semanal: 12500,
-        fuerza_progreso: 15,
-        consistencia: 85,
-        ultimos_ejercicios: [
-          { ejercicio: 'Press Banca', peso: '80kg', reps: 8, fecha: '2024-01-20' },
-          { ejercicio: 'Sentadillas', peso: '100kg', reps: 6, fecha: '2024-01-19' },
-          { ejercicio: 'Peso Muerto', peso: '120kg', reps: 4, fecha: '2024-01-18' }
-        ]
-      });
+      // Si falla, usar datos mínimos reales
+      setDatosMinimos();
       
     } catch (error) {
-      console.error('Error cargando progreso:', error);
+      console.error('Error cargando datos reales:', error);
+      setDatosMinimos();
     }
+  };
+
+  const setDatosMinimos = () => {
+    // Datos mínimos basados en información real de la BD
+    setCliente({
+      id_usuario: id,
+      nombre: 'Cliente',
+      apellido: 'Nuevo',
+      email: 'cliente@ejemplo.com',
+      edad: null,
+      sexo: null,
+      peso_actual: null,
+      altura: null,
+      objetivo: null,
+      experiencia: null,
+      fecha_registro: new Date().toISOString()
+    });
+
+    setProgresoData({
+      rutinas_completadas: 0,
+      total_sesiones: 0,
+      porcentaje_completitud: 0,
+      consistencia: 0,
+      dias_entrenados_mes: 0,
+      estado: 'nuevo',
+      ultima_sesion: null,
+      pesos_maximos: [],
+      ejercicios_recientes: []
+    });
+
+    setWellnessData(null);
   };
 
   const loadRutinaData = async (token) => {
     try {
-      // Usar el endpoint de rutinas-personalizadas
       const response = await fetch(`${API_URL}/rutinas-personalizadas/cliente/${id}`, {
         method: 'GET',
         headers: {
@@ -232,19 +177,6 @@ export default function ClientDetail() {
   const onRefresh = () => {
     setRefreshing(true);
     loadClienteData();
-  };
-
-  const getWellnessColor = (valor) => {
-    if (valor >= 7) return colors.success;
-    if (valor >= 5) return colors.warning;
-    return colors.danger;
-  };
-
-  const getWellnessEmoji = (valor) => {
-    if (valor >= 8) return '😊';
-    if (valor >= 6) return '😐';
-    if (valor >= 4) return '😕';
-    return '😫';
   };
 
   const sincronizarRutina = async () => {
@@ -269,6 +201,47 @@ export default function ClientDetail() {
     } catch (error) {
       console.error('Error sincronizando rutina:', error);
       Alert.alert('Error', 'Error al sincronizar la rutina');
+    }
+  };
+
+  // Funciones helper para estados y colores
+  const getEstadoColor = (estado) => {
+    switch(estado) {
+      case 'activo': return colors.success;
+      case 'irregular': return colors.warning;
+      case 'inactivo': return colors.danger;
+      default: return colors.gray;
+    }
+  };
+
+  const getEstadoTexto = (estado) => {
+    switch(estado) {
+      case 'activo': return 'Activo';
+      case 'irregular': return 'Irregular';
+      case 'inactivo': return 'Inactivo';
+      default: return 'Nuevo';
+    }
+  };
+
+  const getWellnessColor = (valor) => {
+    if (valor >= 7) return colors.success;
+    if (valor >= 5) return colors.warning;
+    return colors.danger;
+  };
+
+  const getWellnessEmoji = (valor) => {
+    if (valor >= 8) return '😊';
+    if (valor >= 6) return '😐';
+    if (valor >= 4) return '😕';
+    return '😫';
+  };
+
+  const formatFecha = (fechaString) => {
+    if (!fechaString) return 'Nunca';
+    try {
+      return new Date(fechaString).toLocaleDateString('es-ES');
+    } catch {
+      return 'Fecha inválida';
     }
   };
 
@@ -317,8 +290,16 @@ export default function ClientDetail() {
             </Text>
             <Text style={styles.clientEmail}>{cliente.email}</Text>
             <Text style={styles.clientDetail}>
-              {cliente.edad} años • {cliente.sexo === 'M' ? 'Hombre' : 'Mujer'} • {cliente.peso_actual} • {cliente.altura}
+              {cliente.edad ? `${cliente.edad} años • ` : ''}
+              {cliente.sexo ? `${cliente.sexo === 'M' ? 'Hombre' : 'Mujer'} • ` : ''}
+              {cliente.peso_actual || 'Sin peso'} • {cliente.altura || 'Sin altura'}
             </Text>
+            {cliente.objetivo && (
+              <Text style={styles.clientObjective}>🎯 {cliente.objetivo}</Text>
+            )}
+            {cliente.experiencia && (
+              <Text style={styles.clientExperience}>💪 {cliente.experiencia}</Text>
+            )}
           </View>
         </View>
 
@@ -328,18 +309,28 @@ export default function ClientDetail() {
             <Text style={styles.statLabel}>Rutinas</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{progresoData?.porcentaje_completitud || 0}%</Text>
-            <Text style={styles.statLabel}>Cumplimiento</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{progresoData?.promedio_rir || 0}</Text>
-            <Text style={styles.statLabel}>RIR Prom</Text>
+            <Text style={styles.statNumber}>{progresoData?.dias_entrenados_mes || 0}</Text>
+            <Text style={styles.statLabel}>Días/Mes</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>{progresoData?.consistencia || 0}%</Text>
             <Text style={styles.statLabel}>Consistencia</Text>
           </View>
+          <View style={styles.statItem}>
+            <Text style={[
+              styles.estadoBadge,
+              { backgroundColor: getEstadoColor(progresoData?.estado) }
+            ]}>
+              {getEstadoTexto(progresoData?.estado)}
+            </Text>
+          </View>
         </View>
+
+        {progresoData?.ultima_sesion && (
+          <Text style={styles.ultimaSesion}>
+            Última sesión: {formatFecha(progresoData.ultima_sesion)}
+          </Text>
+        )}
       </View>
 
       {/* Tabs de navegación */}
@@ -380,44 +371,63 @@ export default function ClientDetail() {
               <View style={styles.statCard}>
                 <Text style={styles.statNumber}>{progresoData?.rutinas_completadas || 0}</Text>
                 <Text style={styles.statLabel}>Rutinas Completadas</Text>
+                <Text style={styles.statSubtext}>Total: {progresoData?.total_sesiones || 0}</Text>
               </View>
               <View style={styles.statCard}>
                 <Text style={styles.statNumber}>{progresoData?.porcentaje_completitud || 0}%</Text>
                 <Text style={styles.statLabel}>Cumplimiento</Text>
+                <Text style={styles.statSubtext}>Promedio por sesión</Text>
               </View>
               <View style={styles.statCard}>
-                <Text style={styles.statNumber}>{progresoData?.mejor_rpe || 0}/10</Text>
-                <Text style={styles.statLabel}>Mejor RPE</Text>
+                <Text style={styles.statNumber}>{progresoData?.dias_entrenados_mes || 0}</Text>
+                <Text style={styles.statLabel}>Días Activo</Text>
+                <Text style={styles.statSubtext}>Últimos 30 días</Text>
               </View>
               <View style={styles.statCard}>
-                <Text style={styles.statNumber}>{progresoData?.promedio_rir || 0}</Text>
-                <Text style={styles.statLabel}>RIR Promedio</Text>
+                <Text style={styles.statNumber}>{progresoData?.consistencia || 0}%</Text>
+                <Text style={styles.statLabel}>Consistencia</Text>
+                <Text style={styles.statSubtext}>Frecuencia entrenamiento</Text>
               </View>
             </View>
 
-            <View style={styles.additionalStats}>
-              <View style={styles.additionalStat}>
-                <Text style={styles.additionalStatLabel}>Progreso de Fuerza</Text>
-                <Text style={styles.additionalStatValue}>
-                  {progresoData?.fuerza_progreso > 0 ? `+${progresoData.fuerza_progreso}%` : 'Estable'}
-                </Text>
-              </View>
-              <View style={styles.additionalStat}>
-                <Text style={styles.additionalStatLabel}>Volumen Semanal</Text>
-                <Text style={styles.additionalStatValue}>{progresoData?.volumen_semanal || 0} kg</Text>
-              </View>
-            </View>
-
-            <View style={styles.recentActivity}>
-              <Text style={styles.sectionTitle}>Actividad Reciente</Text>
-              {progresoData?.ultimos_ejercicios?.map((ejercicio, index) => (
-                <View key={index} style={styles.activityItem}>
-                  <Text style={styles.activityExercise}>{ejercicio.ejercicio}</Text>
-                  <Text style={styles.activityDetail}>
-                    {ejercicio.peso} × {ejercicio.reps} reps • {ejercicio.fecha}
-                  </Text>
+            {/* Pesos Máximos */}
+            {progresoData?.pesos_maximos && progresoData.pesos_maximos.length > 0 && (
+              <View style={styles.pesosMaximosSection}>
+                <Text style={styles.sectionTitle}>🏆 Pesos Máximos (1RM)</Text>
+                <View style={styles.pesosGrid}>
+                  {progresoData.pesos_maximos.slice(0, 6).map((ejercicio, index) => (
+                    <View key={index} style={styles.pesoCard}>
+                      <Text style={styles.pesoEjercicio}>{ejercicio.nombre_ejercicio}</Text>
+                      <Text style={styles.pesoMaximo}>{ejercicio.peso_maximo}kg</Text>
+                      <Text style={styles.pesoFecha}>
+                        {formatFecha(ejercicio.fecha_ultimo)}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
-              ))}
+              </View>
+            )}
+
+            {/* Actividad Reciente - Datos REALES */}
+            <View style={styles.recentActivity}>
+              <Text style={styles.sectionTitle}>
+                {progresoData?.ejercicios_recientes?.length > 0 ? 'Actividad Reciente' : 'Sin Actividad Reciente'}
+              </Text>
+              
+              {progresoData?.ejercicios_recientes?.length > 0 ? (
+                progresoData.ejercicios_recientes.map((ejercicio, index) => (
+                  <View key={index} style={styles.activityItem}>
+                    <Text style={styles.activityExercise}>{ejercicio.nombre_ejercicio}</Text>
+                    <Text style={styles.activityDetail}>
+                      {ejercicio.peso_utilizado} × {ejercicio.reps_logradas} reps • {formatFecha(ejercicio.fecha)}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyText}>
+                  El cliente no ha registrado actividad en los últimos 7 días
+                </Text>
+              )}
             </View>
           </View>
         )}
@@ -425,7 +435,7 @@ export default function ClientDetail() {
         {activeTab === 'wellness' && (
           <View style={styles.wellnessSection}>
             <Text style={styles.sectionTitle}>
-              Estado de Wellness - {wellnessData?.fecha ? new Date(wellnessData.fecha).toLocaleDateString() : 'Hoy'}
+              Estado de Wellness - {wellnessData?.fecha ? formatFecha(wellnessData.fecha) : 'Hoy'}
             </Text>
 
             {wellnessData ? (
@@ -489,7 +499,9 @@ export default function ClientDetail() {
                 </View>
               </>
             ) : (
-              <Text style={styles.emptyText}>El cliente no ha completado la encuesta wellness hoy</Text>
+              <Text style={styles.emptyText}>
+                El cliente no ha completado la encuesta wellness hoy
+              </Text>
             )}
           </View>
         )}
@@ -522,7 +534,7 @@ export default function ClientDetail() {
                 </Text>
                 {rutinaData.ultimaSincronizacion && (
                   <Text style={styles.rutinaUpdate}>
-                    Actualizada: {new Date(rutinaData.ultimaSincronizacion).toLocaleDateString()}
+                    Actualizada: {formatFecha(rutinaData.ultimaSincronizacion)}
                   </Text>
                 )}
                 
@@ -634,6 +646,18 @@ const styles = StyleSheet.create({
     color: colors.gray,
     marginTop: 2,
   },
+  clientObjective: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: 5,
+  },
+  clientExperience: {
+    fontSize: 14,
+    color: colors.success,
+    fontWeight: '600',
+    marginTop: 2,
+  },
   statsOverview: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -651,6 +675,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.gray,
     marginTop: 2,
+  },
+  estadoBadge: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: colors.white,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    textAlign: 'center',
+  },
+  ultimaSesion: {
+    fontSize: 12,
+    color: colors.gray,
+    textAlign: 'center',
+    marginTop: 10,
+    fontStyle: 'italic',
   },
   tabsContainer: {
     flexDirection: 'row',
@@ -714,27 +754,48 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 5,
   },
-  additionalStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
+  statSubtext: {
+    fontSize: 10,
+    color: colors.gray,
+    textAlign: 'center',
+    marginTop: 2,
   },
-  additionalStat: {
-    flex: 1,
+  pesosMaximosSection: {
     backgroundColor: colors.white,
     padding: 15,
     borderRadius: 12,
-    marginHorizontal: 5,
+    marginBottom: 16,
   },
-  additionalStatLabel: {
-    fontSize: 14,
-    color: colors.gray,
-    marginBottom: 5,
+  pesosGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
-  additionalStatValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  pesoCard: {
+    width: '48%',
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  pesoEjercicio: {
+    fontSize: 12,
+    fontWeight: '600',
     color: colors.text,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  pesoMaximo: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginBottom: 2,
+  },
+  pesoFecha: {
+    fontSize: 10,
+    color: colors.gray,
+    textAlign: 'center',
   },
   recentActivity: {
     backgroundColor: colors.white,

@@ -1847,7 +1847,6 @@ app.post('/api/rutinas/sincronizar/:idCliente', authenticateToken, async (req, r
 });
 
 
-// Agregar en server.js - Endpoint específico para datos detallados del cliente
 app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => {
   try {
     const { idCliente } = req.params;
@@ -1858,25 +1857,28 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
         message: 'Acceso denegado. Solo para coaches.'
       });
     }
+
+    console.log('🔍 Obteniendo datos para cliente:', idCliente);
     const [clienteData] = await pool.execute(
       `SELECT 
-        u.id_usuario, 
-        u.nombre, 
-        u.apellido, 
-        u.email,
-        u.edad,
-        u.sexo,
-        u.peso_actual,
-        u.altura,
-        u.objetivo,
-        u.experiencia,
-        u.fecha_registro
-       FROM Usuario u
-       WHERE u.id_usuario = ?`,
+        id_usuario, 
+        nombre, 
+        apellido, 
+        email,
+        edad,
+        sexo,
+        peso_actual,
+        altura,
+        objetivo,
+        experiencia,
+        fecha_registro
+       FROM Usuario 
+       WHERE id_usuario = ?`,
       [idCliente]
     );
 
     if (clienteData.length === 0) {
+      console.log('❌ Cliente no encontrado:', idCliente);
       return res.status(404).json({
         success: false,
         message: 'Cliente no encontrado'
@@ -1884,6 +1886,7 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
     }
 
     const cliente = clienteData[0];
+    console.log('✅ Cliente encontrado:', cliente.nombre, cliente.apellido);
     const [estadisticasRutinas] = await pool.execute(
       `SELECT 
         COUNT(*) as total_sesiones,
@@ -1894,6 +1897,7 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
        WHERE id_usuario = ?`,
       [idCliente]
     );
+
     const today = new Date().toISOString().split('T')[0];
     const [wellnessHoy] = await pool.execute(
       `SELECT energia, sueno, estres, dolor_muscular, motivacion, apetito
@@ -1901,6 +1905,7 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
        WHERE id_usuario = ? AND fecha = ?`,
       [idCliente, today]
     );
+
     const [pesosMaximos] = await pool.execute(
       `SELECT 
         nombre_ejercicio,
@@ -1916,6 +1921,7 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
        LIMIT 6`,
       [idCliente]
     );
+
     const [ejerciciosRecientes] = await pool.execute(
       `SELECT 
         nombre_ejercicio,
@@ -1929,6 +1935,7 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
        LIMIT 5`,
       [idCliente]
     );
+
     const [asistenciaMensual] = await pool.execute(
       `SELECT 
         COUNT(DISTINCT DATE(fecha)) as dias_entrenados
@@ -1953,11 +1960,16 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
       ejercicios_recientes: ejerciciosRecientes,
       consistencia: consistencia,
       dias_entrenados_mes: diasEntrenados,
-
       estado: diasEntrenados === 0 ? 'nuevo' : 
               consistencia >= 70 ? 'activo' : 
               consistencia >= 30 ? 'irregular' : 'inactivo'
     };
+
+    console.log('📊 Datos cliente procesados:', {
+      nombre: datosCliente.nombre,
+      rutinas_completadas: datosCliente.rutinas_completadas,
+      consistencia: datosCliente.consistencia
+    });
 
     res.json({
       success: true,
@@ -1965,10 +1977,10 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
     });
 
   } catch (error) {
-    console.error('Error obteniendo datos del cliente:', error);
+    console.error('❌ Error obteniendo datos del cliente:', error);
     res.status(500).json({
       success: false,
-      message: 'Error interno del servidor'
+      message: 'Error interno del servidor: ' + error.message
     });
   }
 });
