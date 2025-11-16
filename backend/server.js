@@ -2005,4 +2005,93 @@ app.get('/api/debug/cliente-error/:idCliente', authenticateToken, async (req, re
   }
 });
 
+app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => {
+  try {
+    console.log('🔍 INICIANDO ENDPOINT - Coach ID:', req.user?.coachId, 'Cliente ID:', req.params.idCliente);
+    
+    const { idCliente } = req.params;
+
+    if (req.user.role !== 'coach') {
+      console.log('❌ ERROR: Usuario no es coach');
+      return res.status(403).json({
+        success: false,
+        message: 'Acceso denegado. Solo para coaches.'
+      });
+    }
+
+    console.log('✅ Paso 1: Verificación de coach OK');
+
+    const [clienteData] = await pool.execute(
+      `SELECT 
+        id_usuario, 
+        nombre, 
+        apellido, 
+        email,
+        edad,
+        sexo,
+        peso_actual,
+        altura,
+        fecha_registro
+       FROM Usuario 
+       WHERE id_usuario = ?`,
+      [idCliente]
+    );
+
+    console.log('✅ Paso 2: Consulta cliente ejecutada. Resultados:', clienteData.length);
+
+    if (clienteData.length === 0) {
+      console.log('❌ Cliente no encontrado');
+      return res.status(404).json({
+        success: false,
+        message: 'Cliente no encontrado'
+      });
+    }
+
+    const cliente = clienteData[0];
+    console.log('✅ Cliente encontrado:', cliente.nombre, cliente.apellido);
+
+    // ... el resto del código igual
+
+  } catch (error) {
+    console.error('❌ ERROR CRÍTICO EN ENDPOINT:', error);
+    console.error('❌ Stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor: ' + error.message
+    });
+  }
+});
+
+app.get('/api/coach/cliente-simple/:idCliente', authenticateToken, async (req, res) => {
+  try {
+    console.log('🎯 ENDPOINT SIMPLE - User:', req.user);
+    
+    const { idCliente } = req.params;
+
+    // Solo datos básicos
+    const [clienteData] = await pool.execute(
+      `SELECT id_usuario, nombre, apellido, email FROM Usuario WHERE id_usuario = ?`,
+      [idCliente]
+    );
+
+    if (clienteData.length === 0) {
+      return res.status(404).json({ success: false, message: 'No encontrado' });
+    }
+
+    res.json({
+      success: true,
+      cliente: clienteData[0],
+      message: '✅ ENDPOINT SIMPLE FUNCIONA'
+    });
+
+  } catch (error) {
+    console.error('❌ ERROR SIMPLE:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 startServer();
