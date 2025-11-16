@@ -82,25 +82,22 @@ export default function RutinasScreen() {
       console.log('📨 Respuesta completa del backend:', result);
 
       if (result.success !== false) {
-        // ✅ CORRECCIÓN: Manejar ambas estructuras de datos
         let ejercicios = [];
         
         if (result.personalizada) {
-          // Rutina personalizada: result.rutina.ejercicios
+
           console.log('✅ Rutina personalizada detectada');
           ejercicios = result.rutina?.ejercicios || [];
           console.log('📊 Ejercicios personalizados:', ejercicios.length);
         } else {
-          // Rutina general: result.rutina (array directo)
+
           console.log('ℹ️ Rutina general detectada');
           ejercicios = result.rutina || [];
           console.log('📊 Ejercicios generales:', ejercicios.length);
         }
-
-        // ✅ Actualizar el estado con estructura consistente
         setRutina({
           ...result,
-          ejercicios: ejercicios, // Siempre usar "ejercicios" para consistencia
+          ejercicios: ejercicios,
           esPersonalizada: result.personalizada || false
         });
 
@@ -482,7 +479,6 @@ export default function RutinasScreen() {
         }
       />
 
-      {/* ✅ BOTÓN SOLO SE MUESTRA SI HAY RUTINAS CARGADAS */}
       {rutina?.ejercicios && rutina.ejercicios.length > 0 && (
         <TouchableOpacity 
           style={styles.botonCompletarRutina}

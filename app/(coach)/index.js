@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 const API_URL = 'https://rayostrength-production.up.railway.app/api';
 
@@ -34,7 +34,7 @@ export default function CoachDashboard() {
     try {
       setLoading(true);
       setError(null);
-      
+
       const token = await AsyncStorage.getItem('userToken');
       const response = await fetch(`${API_URL}/coach/clientes`, {
         headers: {
@@ -47,18 +47,18 @@ export default function CoachDashboard() {
       }
 
       const data = await response.json();
-      
+
       if (data.success) {
         const clientes = data.clientes || [];
         const totalRutinas = clientes.reduce((sum, cliente) => sum + (cliente.rutinas_completadas || 0), 0);
         const clientesActivos = clientes.filter(cliente => (cliente.rutinas_completadas || 0) > 0).length;
-        
+
         setStats({
           totalClientes: clientes.length,
           rutinasCompletadas: totalRutinas,
           clientesActivos: clientesActivos
         });
-        
+
         console.log('✅ Datos cargados:', {
           clientes: clientes.length,
           rutinas: totalRutinas,
@@ -67,7 +67,7 @@ export default function CoachDashboard() {
       } else {
         throw new Error(data.message || 'Error al cargar datos');
       }
-      
+
     } catch (error) {
       console.error('Error cargando datos del coach:', error);
       setError(error.message);
@@ -81,41 +81,13 @@ export default function CoachDashboard() {
     }
   };
 
+
   const handleNavigateToClients = () => {
-    console.log('Navegando a gestión de clientes...');
-    router.push('/clients');
+    console.log('📌 Navegando a gestión de clientes...');
+    router.push('/(coach)/clients');
   };
 
-const handleLogout = async () => {
-  try {
-    Alert.alert(
-      'Cerrar Sesión',
-      '¿Estás seguro de que quieres cerrar sesión?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel'
-        },
-        {
-          text: 'Cerrar Sesión', 
-          style: 'destructive',
-          onPress: async () => {
-            console.log('🚀 Cerrando sesión de coach...');  
-            await AsyncStorage.multiRemove(['userToken', 'userData', 'userRole']);
-            console.log('✅ Storage limpiado para coach');
-            router.replace('/');
-            
-            console.log('✅ Coach redirigido al login');
-          }
-        }
-      ]
-    );
-  } catch (error) {
-    console.error('Error en logout coach:', error);
-    await AsyncStorage.multiRemove(['userToken', 'userData', 'userRole']);
-    router.replace('/');
-  }
-};
+
 
   if (loading) {
     return (
@@ -168,12 +140,6 @@ const handleLogout = async () => {
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity 
-        style={styles.logoutButton}
-        onPress={handleLogout}
-      >
-        <Text style={styles.logoutText}>Cerrar Sesión</Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }

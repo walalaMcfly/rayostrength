@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,6 +21,7 @@ export default function ProgresoScreen() {
   const [activeTab, setActiveTab] = useState("resumen");
   const [wellnessData, setWellnessData] = useState({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [progressData, setProgressData] = useState(null);
 
   const [estadisticas, setEstadisticas] = useState({
@@ -28,17 +30,19 @@ export default function ProgresoScreen() {
     porcentajeCompletitud: 0,
     mejorRPE: 0,
     promedioRIR: 0,
-    volumenSemanal: 0
+    volumenSemanal: 0,
+    fuerzaProgreso: 0,
+    consistencia: 0
   });
 
-const wellnessQuestions = [
-  { id: "energia", pregunta: "⚡ Nivel de energía", escala: "1 (Agotado) - 10 (Energético)" },
-  { id: "sueno", pregunta: "💤 Calidad del sueño", escala: "1 (Malo) - 10 (Excelente)" },
-  { id: "estres", pregunta: "😥 Nivel de estrés", escala: "1 (Tranquilo) - 10 (Muy estresado)" },
-  { id: "dolor_muscular", pregunta: "💪 Dolor muscular", escala: "1 (Sin dolor) - 10 (Dolor intenso)" }, 
-  { id: "motivacion", pregunta: "🎯 Motivación para entrenar", escala: "1 (Nada) - 10 (Muy motivado)" },
-  { id: "apetito", pregunta: "🍽️ Nivel de apetito", escala: "1 (Nada) - 10 (Muy hambriento)" }
-];
+  const wellnessQuestions = [
+    { id: "energia", pregunta: "⚡ Nivel de energía", escala: "1 (Agotado) - 10 (Energético)" },
+    { id: "sueno", pregunta: "💤 Calidad del sueño", escala: "1 (Malo) - 10 (Excelente)" },
+    { id: "estres", pregunta: "😥 Nivel de estrés", escala: "1 (Tranquilo) - 10 (Muy estresado)" },
+    { id: "dolor_muscular", pregunta: "💪 Dolor muscular", escala: "1 (Sin dolor) - 10 (Dolor intenso)" }, 
+    { id: "motivacion", pregunta: "🎯 Motivación para entrenar", escala: "1 (Nada) - 10 (Muy motivado)" },
+    { id: "apetito", pregunta: "🍽️ Nivel de apetito", escala: "1 (Nada) - 10 (Muy hambriento)" }
+  ];
 
   useEffect(() => {
     cargarDatosProgreso();
@@ -49,50 +53,144 @@ const wellnessQuestions = [
       setLoading(true);
       const token = await AsyncStorage.getItem('userToken');
 
-      // Intentar cargar datos reales del backend
-      try {
-        const response = await fetch(`${BASE_URL}/api/progreso/datos-reales`, {
+      // Cargar datos del backend
+      const [progresoResponse, wellnessResponse] = await Promise.all([
+        fetch(`${BASE_URL}/api/progreso/datos-reales`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        });
+        }),
+        fetch(`${BASE_URL}/api/wellness/ultimo`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
+      ]);
 
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success) {
-            setProgressData(result.progressData);
-            setEstadisticas(result.estadisticas);
-            console.log('✅ Datos reales cargados:', result.estadisticas);
-            return;
-          }
+      let datosProgreso = null;
+      let datosWellness = null;
+
+      // Procesar respuesta de progreso
+      if (progresoResponse.ok) {
+        const result = await progresoResponse.json();
+        if (result.success) {
+          datosProgreso = result.progressData || result.data;
+          console.log('✅ Datos de progreso cargados:', datosProgreso);
         }
-      } catch (apiError) {
-        console.log('⚠️ Usando datos de ejemplo:', apiError.message);
       }
 
-      // Datos de ejemplo como fallback
-      const datosEjemplo = {
-        rutinasSemanales: [3, 4, 5, 4, 6],
-        wellnessPromedio: [6, 7, 8, 7, 6, 8, 7]
-      };
-      
-      setProgressData(datosEjemplo);
-      setEstadisticas({
-        rutinasCompletadas: 12,
-        totalRutinas: 20,
-        porcentajeCompletitud: 60,
-        mejorRPE: 8,
-        promedioRIR: 2.5,
-        volumenSemanal: 45
-      });
+      // Procesar respuesta de wellness
+      if (wellnessResponse.ok) {
+        const result = await wellnessResponse.json();
+        if (result.success) {
+          datosWellness = result.data;
+          console.log('✅ Datos de wellness cargados:', datosWellness);
+        }
+      }
+
+      // Actualizar estado con datos reales o de ejemplo
+      if (datosProgreso) {
+        setProgressData(datosProgreso);
+        setEstadisticas(calcularEstadisticas(datosProgreso));
+      } else {
+        // Datos de ejemplo mejorados
+        const datosEjemplo = generarDatosEjemplo();
+        setProgressData(datosEjemplo);
+        setEstadisticas(calcularEstadisticas(datosEjemplo));
+      }
+
+      // Si hay datos de wellness, pre-cargar el formulario
+      if (datosWellness) {
+        setWellnessData(datosWellness);
+      }
       
     } catch (error) {
       console.error('❌ Error cargando progreso:', error);
+      // En caso de error, usar datos de ejemplo
+      const datosEjemplo = generarDatosEjemplo();
+      setProgressData(datosEjemplo);
+      setEstadisticas(calcularEstadisticas(datosEjemplo));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const calcularEstadisticas = (datos) => {
+    if (!datos) {
+      return {
+        rutinasCompletadas: 0,
+        totalRutinas: 0,
+        porcentajeCompletitud: 0,
+        mejorRPE: 0,
+        promedioRIR: 0,
+        volumenSemanal: 0,
+        fuerzaProgreso: 0,
+        consistencia: 0
+      };
+    }
+
+    // Cálculos basados en datos reales
+    const rutinasSemanales = datos.rutinasSemanales || [3, 4, 5, 4, 6];
+    const volumenData = datos.volumenSemanal || [1200, 1350, 1420, 1380, 1500];
+    const rirData = datos.promedioRIR || [2.5, 2.3, 2.1, 2.4, 2.0];
+    const rpeData = datos.mejorRPE || [7, 8, 8, 7, 9];
+
+    const rutinasCompletadas = rutinasSemanales.reduce((a, b) => a + b, 0);
+    const totalRutinas = rutinasSemanales.length * 7; // Asumiendo 7 días por semana
+    const porcentajeCompletitud = Math.round((rutinasCompletadas / totalRutinas) * 100);
+    
+    const promedioRIR = (rirData.reduce((a, b) => a + b, 0) / rirData.length).toFixed(1);
+    const mejorRPE = Math.max(...rpeData);
+    const volumenSemanal = volumenData[volumenData.length - 1] || 0;
+    
+    // Calcular progreso de fuerza (última semana vs primera)
+    const fuerzaProgreso = volumenData.length > 1 
+      ? Math.round(((volumenData[volumenData.length - 1] - volumenData[0]) / volumenData[0]) * 100)
+      : 0;
+
+    // Calcular consistencia (variación semanal)
+    const consistencia = calcularConsistencia(rutinasSemanales);
+
+    return {
+      rutinasCompletadas,
+      totalRutinas,
+      porcentajeCompletitud,
+      mejorRPE,
+      promedioRIR,
+      volumenSemanal,
+      fuerzaProgreso,
+      consistencia
+    };
+  };
+
+  const calcularConsistencia = (rutinasSemanales) => {
+    if (rutinasSemanales.length < 2) return 100;
+    
+    const promedio = rutinasSemanales.reduce((a, b) => a + b, 0) / rutinasSemanales.length;
+    const variaciones = rutinasSemanales.map(val => Math.abs(val - promedio));
+    const variacionPromedio = variaciones.reduce((a, b) => a + b, 0) / variaciones.length;
+    
+    // Convertir a porcentaje de consistencia (menos variación = más consistencia)
+    return Math.max(0, 100 - (variacionPromedio / promedio * 100));
+  };
+
+  const generarDatosEjemplo = () => {
+    return {
+      rutinasSemanales: [3, 4, 5, 4, 6, 5, 4],
+      volumenSemanal: [1200, 1350, 1420, 1380, 1500, 1450, 1550],
+      promedioRIR: [2.5, 2.3, 2.1, 2.4, 2.0, 2.2, 1.9],
+      mejorRPE: [7, 8, 8, 7, 9, 8, 9],
+      wellnessPromedio: [6, 7, 8, 7, 6, 8, 7]
+    };
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    cargarDatosProgreso();
   };
 
   const handleWellnessChange = (preguntaId, valor) => {
@@ -102,65 +200,66 @@ const wellnessQuestions = [
     }));
   };
 
-const enviarWellness = async () => {
-  try {
-    const token = await AsyncStorage.getItem('userToken');
-    
-    // Verificar que todas las preguntas tengan respuesta
-    const respuestasCompletas = wellnessQuestions.every(q => 
-      wellnessData[q.id] !== undefined && wellnessData[q.id] !== null
-    );
-    
-    if (!respuestasCompletas) {
-      Alert.alert("Encuesta incompleta", "Por favor responde todas las preguntas");
-      return;
-    }
-
-    const datosWellness = {
-      energia: wellnessData.energia || 5,
-      sueno: wellnessData.sueno || 5,
-      estres: wellnessData.estres || 5,
-      dolor_muscular: wellnessData.dolor_muscular || 5, 
-      motivacion: wellnessData.motivacion || 5,
-      apetito: wellnessData.apetito || null
-    };
-
-    console.log('📤 Enviando wellness corregido:', datosWellness);
-
-    const response = await fetch(`${BASE_URL}/api/wellness/registrar`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(datosWellness),
-    });
-
-    const responseText = await response.text();
-    console.log('🔍 Respuesta cruda del servidor:', responseText);
-
-    let result;
+  const enviarWellness = async () => {
     try {
-      result = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('❌ Error parseando JSON:', parseError);
-      Alert.alert("Error", "Respuesta inválida del servidor");
-      return;
-    }
+      const token = await AsyncStorage.getItem('userToken');
+      
+      // Verificar que todas las preguntas tengan respuesta
+      const respuestasCompletas = wellnessQuestions.every(q => 
+        wellnessData[q.id] !== undefined && wellnessData[q.id] !== null
+      );
+      
+      if (!respuestasCompletas) {
+        Alert.alert("Encuesta incompleta", "Por favor responde todas las preguntas");
+        return;
+      }
 
-    if (result.success) {
-      Alert.alert("✅ Encuesta guardada", "Tu estado wellness ha sido registrado correctamente");
-      setWellnessData({});
-      cargarDatosProgreso();
-    } else {
-      Alert.alert("Error", result.message || result.error || "No se pudo guardar la encuesta");
+      const datosWellness = {
+        energia: wellnessData.energia || 5,
+        sueno: wellnessData.sueno || 5,
+        estres: wellnessData.estres || 5,
+        dolor_muscular: wellnessData.dolor_muscular || 5, 
+        motivacion: wellnessData.motivacion || 5,
+        apetito: wellnessData.apetito || 5
+      };
+
+      console.log('📤 Enviando wellness:', datosWellness);
+
+      const response = await fetch(`${BASE_URL}/api/wellness/registrar`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(datosWellness),
+      });
+
+      const responseText = await response.text();
+      console.log('🔍 Respuesta del servidor:', responseText);
+
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('❌ Error parseando JSON:', parseError);
+        Alert.alert("Error", "Respuesta inválida del servidor");
+        return;
+      }
+
+      if (result.success) {
+        Alert.alert("✅ Encuesta guardada", "Tu estado wellness ha sido registrado correctamente");
+        setWellnessData({});
+        // Recargar datos después de enviar
+        cargarDatosProgreso();
+      } else {
+        Alert.alert("Error", result.message || result.error || "No se pudo guardar la encuesta");
+      }
+      
+    } catch (error) {
+      console.error('❌ Error enviando wellness:', error);
+      Alert.alert("Error de conexión", "No se pudo conectar con el servidor: " + error.message);
     }
-    
-  } catch (error) {
-    console.error('❌ Error enviando wellness:', error);
-    Alert.alert("Error de conexión", "No se pudo conectar con el servidor: " + error.message);
-  }
-};
+  };
 
   const renderResumen = () => (
     <View style={styles.seccion}>
@@ -168,72 +267,107 @@ const enviarWellness = async () => {
       
       <View style={styles.estadisticasGrid}>
         <View style={styles.estadisticaCard}>
-          <Text style={styles.estadisticaNumero}>{estadisticas.rutinasCompletadas}/{estadisticas.totalRutinas}</Text>
+          <Text style={styles.estadisticaNumero}>{estadisticas.rutinasCompletadas}</Text>
           <Text style={styles.estadisticaLabel}>Rutinas Completadas</Text>
           <View style={styles.barraProgreso}>
             <View 
               style={[
                 styles.barraProgresoFill, 
-                {width: `${estadisticas.porcentajeCompletitud}%`}
+                {width: `${Math.min(100, estadisticas.porcentajeCompletitud)}%`}
               ]} 
             />
           </View>
+          <Text style={styles.estadisticaSubtexto}>{estadisticas.porcentajeCompletitud}% de consistencia</Text>
         </View>
 
         <View style={styles.estadisticaCard}>
           <Text style={styles.estadisticaNumero}>{estadisticas.promedioRIR}</Text>
           <Text style={styles.estadisticaLabel}>RIR Promedio</Text>
-          <Text style={styles.estadisticaSubtexto}>(Menos es mejor)</Text>
+          <Text style={styles.estadisticaSubtexto}>
+          </Text>
         </View>
 
         <View style={styles.estadisticaCard}>
           <Text style={styles.estadisticaNumero}>{estadisticas.mejorRPE}/10</Text>
-          <Text style={styles.estadisticaLabel}>Mejor RPE</Text>
-          <Text style={styles.estadisticaSubtexto}>(Esfuerzo percibido)</Text>
+          <Text style={styles.estadisticaLabel}>Mejor Esfuerzo</Text>
+          <Text style={styles.estadisticaSubtexto}>
+            {estadisticas.mejorRPE >= 8 ? '🔥 Excelente' : '💪 Buen trabajo'}
+          </Text>
         </View>
 
         <View style={styles.estadisticaCard}>
           <Text style={styles.estadisticaNumero}>{estadisticas.volumenSemanal}</Text>
-          <Text style={styles.estadisticaLabel}>Volumen Semanal</Text>
-          <Text style={styles.estadisticaSubtexto}>(kg totales)</Text>
+          <Text style={styles.estadisticaLabel}>Volumen Total</Text>
+          <Text style={styles.estadisticaSubtexto}>
+            {estadisticas.fuerzaProgreso > 0 ? `📈 +${estadisticas.fuerzaProgreso}%` : 'Manteniendo'}
+          </Text>
         </View>
       </View>
 
-      {/* Solo un gráfico simple y confiable */}
+      {/* Gráficos mejorados */}
       {progressData && progressData.rutinasSemanales && (
-        <View style={styles.graficoContainer}>
-          <Text style={styles.subtitulo}>Rutinas Completadas (Últimas 5 semanas)</Text>
-          <BarChart
-            data={{
-              labels: ['S1', 'S2', 'S3', 'S4', 'S5'],
-              datasets: [{ 
-                data: progressData.rutinasSemanales.map(val => isFinite(val) ? val : 0) 
-              }]
-            }}
-            width={screenWidth - 64}
-            height={220}
-            chartConfig={chartConfig}
-            style={styles.grafico}
-            fromZero
-            showValuesOnTopOfBars
-          />
+        <View style={styles.graficosContainer}>
+          <View style={styles.graficoContainer}>
+            <Text style={styles.subtitulo}>Rutinas por Semana</Text>
+            <BarChart
+              data={{
+                labels: progressData.rutinasSemanales.map((_, i) => `S${i+1}`),
+                datasets: [{ 
+                  data: progressData.rutinasSemanales.map(val => isFinite(val) ? val : 0) 
+                }]
+              }}
+              width={screenWidth - 64}
+              height={200}
+              chartConfig={chartConfig}
+              style={styles.grafico}
+              fromZero
+              showValuesOnTopOfBars
+            />
+          </View>
+
+          {progressData.volumenSemanal && (
+            <View style={styles.graficoContainer}>
+              <Text style={styles.subtitulo}>Progreso de Volumen (kg)</Text>
+              <BarChart
+                data={{
+                  labels: progressData.volumenSemanal.map((_, i) => `S${i+1}`),
+                  datasets: [{ 
+                    data: progressData.volumenSemanal.map(val => isFinite(val) ? Math.round(val/10) : 0) 
+                  }]
+                }}
+                width={screenWidth - 64}
+                height={200}
+                chartConfig={chartConfigVolumen}
+                style={styles.grafico}
+                fromZero
+                showValuesOnTopOfBars
+              />
+            </View>
+          )}
         </View>
       )}
 
       {/* Información adicional útil */}
       <View style={styles.infoContainer}>
-        <Text style={styles.infoTitulo}>💡 ¿Cómo interpretar tus métricas?</Text>
-        <View style={styles.infoItem}>
-          <Text style={styles.infoLabel}>RIR (Reps in Reserve):</Text>
-          <Text style={styles.infoText}>Cuántas repeticiones te quedaban en el tanque. Ideal: 1-2</Text>
+        <Text style={styles.infoTitulo}>💡 Tus Métricas de Rendimiento</Text>
+        <View style={styles.metricaItem}>
+          <Text style={styles.metricaLabel}>Consistencia de Entrenamiento:</Text>
+          <Text style={styles.metricaValor}>{Math.round(estadisticas.consistencia)}%</Text>
+          <Text style={styles.metricaDescripcion}>
+            {estadisticas.consistencia > 80 ? 'Excelente consistencia' : 
+             estadisticas.consistencia > 60 ? 'Buena regularidad' : 
+             'Puedes mejorar la regularidad'}
+          </Text>
         </View>
-        <View style={styles.infoItem}>
-          <Text style={styles.infoLabel}>RPE (Rate of Perceived Exertion):</Text>
-          <Text style={styles.infoText}>Tu esfuerzo percibido. Ideal: 7-9</Text>
-        </View>
-        <View style={styles.infoItem}>
-          <Text style={styles.infoLabel}>Volumen:</Text>
-          <Text style={styles.infoText}>Peso total levantado. Busca progresión gradual.</Text>
+        <View style={styles.metricaItem}>
+          <Text style={styles.metricaLabel}>Progreso de Fuerza:</Text>
+          <Text style={styles.metricaValor}>
+            {estadisticas.fuerzaProgreso > 0 ? `+${estadisticas.fuerzaProgreso}%` : 'Estable'}
+          </Text>
+          <Text style={styles.metricaDescripcion}>
+            {estadisticas.fuerzaProgreso > 10 ? '¡Gran progreso!' : 
+             'Mantén la progresión gradual'}
+          </Text>
         </View>
       </View>
     </View>
@@ -280,7 +414,7 @@ const enviarWellness = async () => {
       <View style={styles.wellnessInfo}>
         <Text style={styles.wellnessInfoTitulo}>¿Por qué es importante el Wellness?</Text>
         <Text style={styles.wellnessInfoText}>
-          Tu recuperación diaria afecta directamente tu rendimiento. Un wellness bajo puede indicar que necesitas más descanso o ajustar la intensidad.
+          Tu recuperación diaria afecta directamente tu rendimiento. Un wellness bajo puede indicar que necesitas más descanso o ajustar la intensidad. Tu coach verá estos datos para personalizar tu entrenamiento.
         </Text>
       </View>
     </View>
@@ -297,7 +431,15 @@ const enviarWellness = async () => {
 
   return (
     <View style={styles.container}>
-      {/* Solo 2 pestañas: Resumen y Wellness */}
+      {/* Header con botón de recarga */}
+      <View style={styles.header}>
+        <Text style={styles.tituloPrincipal}>Mi Progreso</Text>
+        <TouchableOpacity style={styles.botonRecargar} onPress={onRefresh}>
+          <Text style={styles.textoBotonRecargar}>🔄</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Pestañas */}
       <View style={styles.tabsContainer}>
         <TouchableOpacity 
           style={[styles.tab, activeTab === "resumen" && styles.tabActiva]}
@@ -318,7 +460,17 @@ const enviarWellness = async () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.contenido}>
+      <ScrollView 
+        style={styles.contenido}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.active]}
+            tintColor={colors.active}
+          />
+        }
+      >
         {activeTab === "resumen" && renderResumen()}
         {activeTab === "wellness" && renderWellness()}
       </ScrollView>
@@ -337,8 +489,44 @@ const chartConfig = {
   propsForDots: { r: "4", strokeWidth: "2", stroke: colors.active }
 };
 
+const chartConfigVolumen = {
+  backgroundColor: colors.card,
+  backgroundGradientFrom: colors.card,
+  backgroundGradientTo: colors.card,
+  decimalPlaces: 0,
+  color: (opacity = 1) => `rgba(34, 197, 94, ${opacity})`,
+  labelColor: (opacity = 1) => colors.text,
+  style: { borderRadius: 16 },
+  propsForDots: { r: "4", strokeWidth: "2", stroke: "#22c55e" }
+};
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { 
+    flex: 1, 
+    backgroundColor: colors.background 
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  tituloPrincipal: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  botonRecargar: {
+    padding: 8,
+    backgroundColor: colors.card,
+    borderRadius: 20,
+  },
+  textoBotonRecargar: {
+    fontSize: 18,
+    color: colors.text,
+  },
   cargandoContainer: { 
     flex: 1, 
     justifyContent: 'center', 
@@ -437,11 +625,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.active,
     borderRadius: 3,
   },
+  graficosContainer: {
+    gap: 16,
+  },
   graficoContainer: {
     backgroundColor: colors.card,
     padding: 16,
     borderRadius: 12,
-    marginBottom: 16,
   },
   subtitulo: {
     color: colors.text,
@@ -457,25 +647,36 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     padding: 16,
     borderRadius: 12,
+    marginTop: 16,
   },
   infoTitulo: {
     color: colors.text,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  infoItem: {
-    marginBottom: 10,
+  metricaItem: {
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  infoLabel: {
-    color: colors.active,
+  metricaLabel: {
+    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
+    marginBottom: 4,
   },
-  infoText: {
+  metricaValor: {
+    color: colors.active,
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  metricaDescripcion: {
     color: colors.text,
     fontSize: 12,
-    marginTop: 2,
+    opacity: 0.8,
   },
   preguntaContainer: {
     backgroundColor: colors.card,

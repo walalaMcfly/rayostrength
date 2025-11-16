@@ -5,34 +5,44 @@ import { ActivityIndicator, Text, View } from 'react-native';
 
 export default function CoachLayout() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
-  const [isCoach, setIsCoach] = useState(false);
 
-  useEffect(() => {
-    checkUserRole();
-  }, []);
+  const [loading, setLoading] = useState(true);
+  const [allow, setAllow] = useState(false);
 
-  const checkUserRole = async () => {
+  const checkAuth = async () => {
     try {
-      const userData = await AsyncStorage.getItem('userData');
-      const userRole = await AsyncStorage.getItem('userRole');
-      
-      const role = userData ? JSON.parse(userData).role : userRole;
-      
-      if (role === 'coach') {
-        setIsCoach(true);
-      } else {
-        router.replace('/(drawer)/(tabs)/rutinas');
+      setLoading(true);
+
+      const token = await AsyncStorage.getItem('userToken');
+      const userDataStr = await AsyncStorage.getItem('userData');
+      const userRoleStored = await AsyncStorage.getItem('userRole');
+      if (!token) {
+        setAllow(false);
+        router.replace('/');
+        return;
       }
-    } catch (error) {
-      console.error('Error verificando rol:', error);
-      router.replace('/(drawer)/(tabs)/rutinas');
+
+      const role = userDataStr ? JSON.parse(userDataStr).role : userRoleStored;
+      if (role !== 'coach') {
+        setAllow(false);
+        router.replace('/');
+        return;
+      }
+      setAllow(true);
+
+    } catch (e) {
+      setAllow(false);
+      router.replace('/');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  if (isLoading) {
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color="#3B82F6" />
@@ -41,29 +51,18 @@ export default function CoachLayout() {
     );
   }
 
-  if (!isCoach) {
-    return null;
-  }
+  if (!allow) return <View />; 
 
   return (
     <Stack
       screenOptions={{
         headerShown: true,
-        headerStyle: {
-          backgroundColor: '#3B82F6',
-        },
+        headerStyle: { backgroundColor: '#3B82F6' },
         headerTintColor: '#fff',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
+        headerTitleStyle: { fontWeight: 'bold' },
       }}
     >
-      <Stack.Screen 
-        name="index" 
-        options={{ 
-          title: 'Dashboard Coach',
-        }} 
-      />
+      <Stack.Screen name="index" options={{ title: 'Dashboard Coach' }} />
       <Stack.Screen name="clients" options={{ headerShown: false }} />
     </Stack>
   );

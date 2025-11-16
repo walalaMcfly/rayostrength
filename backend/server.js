@@ -1846,4 +1846,131 @@ app.post('/api/rutinas/sincronizar/:idCliente', authenticateToken, async (req, r
   }
 });
 
+
+// Agregar en server.js - Endpoint específico para datos detallados del cliente
+app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => {
+  try {
+    const { idCliente } = req.params;
+
+    if (req.user.role !== 'coach') {
+      return res.status(403).json({
+        success: false,
+        message: 'Acceso denegado. Solo para coaches.'
+      });
+    }
+    const [clienteData] = await pool.execute(
+      `SELECT 
+        u.id_usuario, 
+        u.nombre, 
+        u.apellido, 
+        u.email,
+        u.edad,
+        u.sexo,
+        u.peso_actual,
+        u.altura,
+        u.objetivo,
+        u.experiencia,
+        u.fecha_registro
+       FROM Usuario u
+       WHERE u.id_usuario = ?`,
+      [idCliente]
+    );
+
+    if (clienteData.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cliente no encontrado'
+      });
+    }
+
+    const cliente = clienteData[0];
+    const [estadisticasRutinas] = await pool.execute(
+      `SELECT 
+        COUNT(*) as total_sesiones,
+        SUM(CASE WHEN completada = true THEN 1 ELSE 0 END) as sesiones_completadas,
+        AVG(CASE WHEN completada = true THEN porcentaje_completitud ELSE 0 END) as porcentaje_promedio,
+        MAX(fecha) as ultima_sesion
+       FROM SesionesEntrenamiento 
+       WHERE id_usuario = ?`,
+      [idCliente]
+    );
+    const today = new Date().toISOString().split('T')[0];
+    const [wellnessHoy] = await pool.execute(
+      `SELECT energia, sueno, estres, dolor_muscular, motivacion, apetito
+       FROM Wellness 
+       WHERE id_usuario = ? AND fecha = ?`,
+      [idCliente, today]
+    );
+    const [pesosMaximos] = await pool.execute(
+      `SELECT 
+        nombre_ejercicio,
+        MAX(CAST(REPLACE(REPLACE(peso_utilizado, 'kg', ''), ' ', '') AS DECIMAL)) as peso_maximo,
+        MAX(fecha) as fecha_ultimo
+       FROM ProgresoRutinas 
+       WHERE id_usuario = ? 
+         AND peso_utilizado IS NOT NULL 
+         AND peso_utilizado != ''
+         AND peso_utilizado != '0'
+       GROUP BY nombre_ejercicio
+       ORDER BY peso_maximo DESC
+       LIMIT 6`,
+      [idCliente]
+    );
+    const [ejerciciosRecientes] = await pool.execute(
+      `SELECT 
+        nombre_ejercicio,
+        peso_utilizado,
+        reps_logradas,
+        fecha
+       FROM ProgresoRutinas 
+       WHERE id_usuario = ? 
+         AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+       ORDER BY fecha DESC
+       LIMIT 5`,
+      [idCliente]
+    );
+    const [asistenciaMensual] = await pool.execute(
+      `SELECT 
+        COUNT(DISTINCT DATE(fecha)) as dias_entrenados
+       FROM SesionesEntrenamiento 
+       WHERE id_usuario = ? 
+         AND fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+         AND completada = true`,
+      [idCliente]
+    );
+
+    const diasEntrenados = asistenciaMensual[0]?.dias_entrenados || 0;
+    const consistencia = Math.round((diasEntrenados / 30) * 100);
+
+    const datosCliente = {
+      ...cliente,
+      rutinas_completadas: estadisticasRutinas[0]?.sesiones_completadas || 0,
+      total_sesiones: estadisticasRutinas[0]?.total_sesiones || 0,
+      porcentaje_completitud: Math.round(estadisticasRutinas[0]?.porcentaje_promedio || 0),
+      ultima_sesion: estadisticasRutinas[0]?.ultima_sesion,
+      wellness_hoy: wellnessHoy.length > 0 ? wellnessHoy[0] : null,
+      pesos_maximos: pesosMaximos,
+      ejercicios_recientes: ejerciciosRecientes,
+      consistencia: consistencia,
+      dias_entrenados_mes: diasEntrenados,
+
+      estado: diasEntrenados === 0 ? 'nuevo' : 
+              consistencia >= 70 ? 'activo' : 
+              consistencia >= 30 ? 'irregular' : 'inactivo'
+    };
+
+    res.json({
+      success: true,
+      cliente: datosCliente
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo datos del cliente:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
 startServer();
