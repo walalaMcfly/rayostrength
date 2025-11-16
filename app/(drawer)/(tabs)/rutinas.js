@@ -58,6 +58,8 @@ export default function RutinasScreen() {
       const token = await AsyncStorage.getItem('userToken');
       const user = JSON.parse(await AsyncStorage.getItem('userData'));
 
+      console.log('🔄 Cargando rutina para usuario:', user.id_usuario);
+
       const response = await fetch(`${BASE_URL}/api/rutinas-personalizadas/cliente/${user.id_usuario}`, {
         method: 'GET',
         headers: {
@@ -65,6 +67,8 @@ export default function RutinasScreen() {
           'Content-Type': 'application/json',
         },
       });
+
+      console.log('📨 Status de respuesta:', response.status);
 
       if (response.status === 401) {
         throw new Error('Token inválido o expirado');
@@ -75,10 +79,35 @@ export default function RutinasScreen() {
       }
 
       const result = await response.json();
+      console.log('📨 Respuesta completa del backend:', result);
 
-      if (result.success) {
-        setRutina(result);
+      if (result.success !== false) {
+        // ✅ CORRECCIÓN: Manejar ambas estructuras de datos
+        let ejercicios = [];
+        
+        if (result.personalizada) {
+          // Rutina personalizada: result.rutina.ejercicios
+          console.log('✅ Rutina personalizada detectada');
+          ejercicios = result.rutina?.ejercicios || [];
+          console.log('📊 Ejercicios personalizados:', ejercicios.length);
+        } else {
+          // Rutina general: result.rutina (array directo)
+          console.log('ℹ️ Rutina general detectada');
+          ejercicios = result.rutina || [];
+          console.log('📊 Ejercicios generales:', ejercicios.length);
+        }
+
+        // ✅ Actualizar el estado con estructura consistente
+        setRutina({
+          ...result,
+          ejercicios: ejercicios, // Siempre usar "ejercicios" para consistencia
+          esPersonalizada: result.personalizada || false
+        });
+
+        console.log('✅ Rutina cargada correctamente. Ejercicios:', ejercicios.length);
+        
       } else {
+        console.error('❌ Error en respuesta del servidor:', result.message);
         Alert.alert('Error', result.message || 'Error al cargar rutinas');
       }
     } catch (error) {
@@ -175,7 +204,7 @@ export default function RutinasScreen() {
 
     try {
       const setsCompletadosCount = Object.values(nuevosSets[ejercicioId] || {}).filter(Boolean).length;
-      const ejercicio = rutina.rutina.ejercicios.find(e => e.id === ejercicioId);
+      const ejercicio = rutina.ejercicios.find(e => e.id === ejercicioId);
       
       await fetch(`${BASE_URL}/api/progreso/guardar-ejercicio`, {
         method: 'POST',
@@ -205,18 +234,18 @@ export default function RutinasScreen() {
 
   const verificarRutinaCompletada = async () => {
     try {
-      const ejerciciosCompletados = rutina.rutina.ejercicios.filter(ejercicio => {
+      const ejerciciosCompletados = rutina.ejercicios.filter(ejercicio => {
         const setsDelEjercicio = setsCompletados[ejercicio.id] || {};
         const setsCompletadosCount = Object.values(setsDelEjercicio).filter(Boolean).length;
         return setsCompletadosCount === ejercicio.series;
       }).length;
 
-      const porcentajeCompletitud = (ejerciciosCompletados / rutina.rutina.ejercicios.length) * 100;
+      const porcentajeCompletitud = (ejerciciosCompletados / rutina.ejercicios.length) * 100;
 
-      if (porcentajeCompletitud >= 80 && ejerciciosCompletados < rutina.rutina.ejercicios.length) {
+      if (porcentajeCompletitud >= 80 && ejerciciosCompletados < rutina.ejercicios.length) {
         Alert.alert(
           "¿Rutina completada?",
-          `Has completado ${ejerciciosCompletados} de ${rutina.rutina.ejercicios.length} ejercicios. ¿Quieres marcar la rutina como completada?`,
+          `Has completado ${ejerciciosCompletados} de ${rutina.ejercicios.length} ejercicios. ¿Quieres marcar la rutina como completada?`,
           [
             { text: "No, aún no", style: "cancel" },
             { 
@@ -227,7 +256,7 @@ export default function RutinasScreen() {
         );
       }
 
-      if (ejerciciosCompletados === rutina.rutina.ejercicios.length) {
+      if (ejerciciosCompletados === rutina.ejercicios.length) {
         registrarSesionCompletada(ejerciciosCompletados);
       }
 
@@ -238,7 +267,7 @@ export default function RutinasScreen() {
 
   const registrarSesionCompletada = async (ejerciciosCompletados) => {
     try {
-      const volumenTotal = rutina.rutina.ejercicios.reduce((total, ejercicio) => {
+      const volumenTotal = rutina.ejercicios.reduce((total, ejercicio) => {
         const peso = parseFloat(realesData[ejercicio.id]?.pesoReal || ejercicio.pesoSugerido) || 0;
         const series = ejercicio.series || 0;
         const reps = parseFloat(realesData[ejercicio.id]?.repsReales || ejercicio.repeticiones) || 0;
@@ -252,8 +281,8 @@ export default function RutinasScreen() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          semana_rutina: rutina.personalizada ? 'Personalizada' : 'General',
-          total_ejercicios: rutina.rutina.ejercicios.length,
+          semana_rutina: rutina.esPersonalizada ? 'Personalizada' : 'General',
+          total_ejercicios: rutina.ejercicios.length,
           ejercicios_completados: ejerciciosCompletados,
           duracion_total_minutos: 60,
           volumen_total: volumenTotal,
@@ -275,7 +304,7 @@ export default function RutinasScreen() {
     setNotasCliente(nuevasNotas);
 
     try {
-      const ejercicio = rutina.rutina.ejercicios.find(e => e.id === ejercicioId);
+      const ejercicio = rutina.ejercicios.find(e => e.id === ejercicioId);
       const setsCompletadosCount = Object.values(setsCompletados[ejercicioId] || {}).filter(Boolean).length;
       
       await fetch(`${BASE_URL}/api/progreso/guardar-ejercicio`, {
@@ -396,13 +425,11 @@ export default function RutinasScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>
-          {rutina?.personalizada 
-            ? `🏋️ Mi Rutina Personalizada`
-            : '📋 Rutina General'
+          {rutina?.esPersonalizada 
           }
         </Text>
         
-        {rutina?.personalizada ? (
+        {rutina?.esPersonalizada ? (
           <View style={styles.infoContainer}>
             <Text style={styles.coachText}>Creada por: {rutina.coach}</Text>
             <Text style={styles.syncText}>
@@ -419,20 +446,38 @@ export default function RutinasScreen() {
       </View>
 
       <FlatList
-        data={rutina?.rutina?.ejercicios || []}
+        data={rutina?.ejercicios || []}
         keyExtractor={(item, index) => item.id || `ej-${index}`}
         renderItem={renderItem}
         contentContainerStyle={{ paddingBottom: 24 }}
         refreshing={refreshing} 
         onRefresh={onRefresh} 
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No hay ejercicios disponibles</Text>
+            <Text style={styles.emptySubtext}>
+              {rutina?.esPersonalizada 
+                ? 'Tu coach aún no ha agregado ejercicios a tu rutina.'
+                : 'No hay rutina disponible en este momento.'
+              }
+            </Text>
+          </View>
+        }
       />
-
-      <TouchableOpacity 
-        style={styles.botonCompletarRutina}
-        onPress={() => setShowModalCompletar(true)}
-      >
-        <Text style={styles.textoBotonCompletarRutina}>✅ Completar Rutina</Text>
-      </TouchableOpacity>
+      {rutina?.ejercicios && rutina.ejercicios.length > 0 && (
+        <TouchableOpacity 
+          style={styles.botonCompletarRutina}
+          onPress={() => {
+            const ejerciciosCompletados = rutina.ejercicios.filter(ejercicio => {
+              const setsCompletadosCount = Object.values(setsCompletados[ejercicio.id] || {}).filter(Boolean).length;
+              return setsCompletadosCount === ejercicio.series;
+            }).length;
+            registrarSesionCompletada(ejerciciosCompletados);
+          }}
+        >
+          <Text style={styles.textoBotonCompletarRutina}>✅ Completar Rutina</Text>
+        </TouchableOpacity>
+      )}
 
       <Modal
         visible={!!ejercicioEditando}
@@ -518,7 +563,7 @@ export default function RutinasScreen() {
               <TouchableOpacity 
                 style={[styles.modalButton, styles.modalButtonConfirm]}
                 onPress={() => {
-                  const ejerciciosCompletados = rutina.rutina.ejercicios.filter(ejercicio => {
+                  const ejerciciosCompletados = rutina.ejercicios.filter(ejercicio => {
                     const setsCompletadosCount = Object.values(setsCompletados[ejercicio.id] || {}).filter(Boolean).length;
                     return setsCompletadosCount === ejercicio.series;
                   }).length;
@@ -695,6 +740,25 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 10,
     color: colors.text,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    color: colors.text,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: colors.placeholder,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   botonCompletarRutina: {
     backgroundColor: colors.active,

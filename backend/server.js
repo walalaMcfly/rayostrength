@@ -1207,41 +1207,63 @@ function procesarRutinaColumnasFijas(rawData) {
   console.log('🔍 Procesando con columnas fijas...');
   console.log('📊 Total de filas:', rawData.length);
 
+  // Buscar dónde empiezan los datos reales (saltar headers)
   let startRow = 1;
-  
   for (let i = 1; i < Math.min(10, rawData.length); i++) {
     const row = rawData[i];
-    if (row && row.length >= 4 && row[3]) {
-      const ejercicio = (row[3] || '').toString().toLowerCase();
-      if (ejercicio.includes('squat') || ejercicio.includes('press') || ejercicio.includes('pull')) {
+    if (row && row.length >= 4) {
+      const grupoMuscular = (row[2] || '').toString().trim();
+      const nombreEjercicio = (row[3] || '').toString().trim();
+      
+      // Si encontramos datos válidos en grupo muscular y ejercicio, empezamos aquí
+      if (grupoMuscular && nombreEjercicio && 
+          !grupoMuscular.toLowerCase().includes('grupo') &&
+          !nombreEjercicio.toLowerCase().includes('ejercicio')) {
         startRow = i;
+        console.log('✅ Datos empiezan en fila:', startRow + 1);
         break;
       }
     }
   }
-
-  console.log('📝 Datos empiezan en fila:', startRow + 1);
 
   for (let i = startRow; i < rawData.length; i++) {
     const row = rawData[i];
     
     if (!row || row.length < 9) continue;
 
-    const grupoMuscular = safeSQLValue(row[2]);
-    const nombreEjercicio = safeSQLValue(row[3]);
-    const video = safeSQLValue(row[4]);
-    const series = safeSQLValue(row[5]);
-    const reps = safeSQLValue(row[6]);
-    const rir = safeSQLValue(row[7]);
-    const descanso = safeSQLValue(row[8]);
+    // 🎯 COLUMNAS CORRECTAS:
+    // C: Grupo muscular (índice 2)
+    // D: Ejercicio (índice 3) 
+    // E: Video (índice 4)
+    // F: Series (índice 5)
+    // G: Reps (índice 6)
+    // H: RIR (índice 7)
+    // I: Descanso (índice 8)
 
+    const grupoMuscular = safeSQLValue(row[2]);        // Columna C
+    const nombreEjercicio = safeSQLValue(row[3]);      // Columna D
+    const video = safeSQLValue(row[4]);               // Columna E
+    const series = safeSQLValue(row[5]);              // Columna F
+    const reps = safeSQLValue(row[6]);                // Columna G
+    const rir = safeSQLValue(row[7]);                 // Columna H
+    const descanso = safeSQLValue(row[8]);            // Columna I
+
+    // Validar que tenemos un ejercicio
     if (!nombreEjercicio || nombreEjercicio.toString().trim() === '') continue;
 
     const nombreLimpio = nombreEjercicio.toString().trim();
-    if (nombreLimpio.toUpperCase().includes('EXERCISE') || nombreLimpio.includes('**')) continue;
+    
+    // Saltar filas que son headers o vacías
+    if (nombreLimpio.toUpperCase().includes('EXERCISE') || 
+        nombreLimpio.includes('**') ||
+        nombreLimpio.toLowerCase().includes('ejercicio') ||
+        nombreLimpio === '') {
+      continue;
+    }
 
+    // 🎯 CREAR EJERCICIO CON GRUPO MUSCULAR MEJORADO
     const ejercicio = {
-      grupoMuscular: limpiarTexto(grupoMuscular) || 'General',
+      grupoMuscular: limpiarGrupoMuscular(grupoMuscular) || 'General',
       nombre: nombreLimpio,
       video: limpiarTexto(video) || '',
       series: parseInt(series) || 0,
@@ -1251,19 +1273,40 @@ function procesarRutinaColumnasFijas(rawData) {
       id: `ej-${i}`
     };
 
+    console.log(`📝 Ejercicio ${i}:`, {
+      grupo: ejercicio.grupoMuscular,
+      nombre: ejercicio.nombre,
+      series: ejercicio.series
+    });
+
     if (ejercicio.nombre && ejercicio.nombre.length > 2) {
       ejercicios.push(ejercicio);
     }
   }
+
   console.log(`🎯 Total de ejercicios procesados: ${ejercicios.length}`);
+  console.log(`🏷️ Grupos musculares encontrados:`, [...new Set(ejercicios.map(e => e.grupoMuscular))]);
+
   return {
-    ejercicios: ejercicios || [],
+    ejercicios,
     metadata: {
       totalEjercicios: ejercicios.length,
       gruposMusculares: [...new Set(ejercicios.map(e => e.grupoMuscular))],
       fechaProcesamiento: new Date().toISOString()
     }
   };
+}
+
+
+function limpiarGrupoMuscular(texto) {
+  if (!texto) return 'General';
+  
+  const textoLimpio = texto.toString().trim();
+  
+  if (textoLimpio === '') return 'General';
+  
+  // Convertir a formato consistente (primera letra mayúscula, resto minúsculas)
+  return textoLimpio.charAt(0).toUpperCase() + textoLimpio.slice(1).toLowerCase();
 }
 
 function limpiarTexto(texto) {
@@ -1303,7 +1346,6 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
         );
 
         if (cache.length > 0) {
-          // ✅ CORRECCIÓN: Manejar el caso donde datos_rutina no es JSON válido
           let rutinaData;
           const datosCache = cache[0].datos_rutina;
           
@@ -1312,11 +1354,9 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
             typeof datosCache === 'string' ? datosCache.substring(0, 200) : datosCache);
           
           try {
-            // Intentar parsear como JSON
             if (typeof datosCache === 'string') {
               rutinaData = JSON.parse(datosCache);
             } else if (typeof datosCache === 'object' && datosCache !== null) {
-              // Si ya es un objeto, usarlo directamente
               rutinaData = datosCache;
             } else {
               console.error('❌ Tipo de datos inesperado en cache:', typeof datosCache);
@@ -1325,8 +1365,6 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
           } catch (parseError) {
             console.error('❌ Error parseando JSON del cache:', parseError);
             console.error('❌ Contenido problemático:', datosCache);
-            
-            // Si el JSON es inválido, crear una estructura vacía
             rutinaData = { 
               ejercicios: [], 
               metadata: { 
@@ -1347,7 +1385,6 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
         }
       }
 
-      // Fallback a rutina general
       try {
         const data = await googleSheets.readSheet('Rayostrenght');
         const rutinaGeneral = transformSheetDataToRutinas(data);
@@ -1655,6 +1692,63 @@ app.get('/api/debug/rutina-completa/:idCliente', authenticateToken, async (req, 
       success: false,
       error: error.message,
       stack: error.stack
+    });
+  }
+});
+
+
+app.post('/api/debug/reparar-grupos-musculares/:idCliente', authenticateToken, async (req, res) => {
+  try {
+    const { idCliente } = req.params;
+
+    if (req.user.role !== 'coach') {
+      return res.status(403).json({ success: false, message: 'Solo coaches pueden reparar rutinas' });
+    }
+
+    // Obtener la hoja vinculada
+    const [hojas] = await pool.execute(
+      `SELECT id_hoja_google FROM HojasClientes WHERE id_cliente = ? AND activa = TRUE`,
+      [idCliente]
+    );
+
+    if (hojas.length === 0) {
+      return res.status(404).json({ success: false, message: 'No hay hoja vinculada para este cliente' });
+    }
+
+    const sheetId = hojas[0].id_hoja_google;
+
+    console.log('🔧 Reparando grupos musculares para cliente:', idCliente);
+
+    // Reprocesar la hoja con la función corregida
+    const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
+    const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
+
+    // Guardar en cache
+    const datosRutinaJSON = JSON.stringify(rutinaProcesada);
+    
+    const [result] = await pool.execute(
+      `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
+       VALUES (?, ?) 
+       ON DUPLICATE KEY UPDATE 
+       datos_rutina = VALUES(datos_rutina), 
+       fecha_actualizacion = NOW()`,
+      [idCliente, datosRutinaJSON]
+    );
+
+    console.log('✅ Grupos musculares reparados para cliente:', idCliente);
+
+    res.json({
+      success: true,
+      message: 'Grupos musculares reparados correctamente',
+      ejerciciosProcesados: rutinaProcesada.ejercicios.length,
+      gruposMusculares: rutinaProcesada.metadata.gruposMusculares
+    });
+
+  } catch (error) {
+    console.error('Error reparando grupos musculares:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error reparando grupos musculares: ' + error.message
     });
   }
 });
