@@ -1971,4 +1971,38 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
   }
 });
 
+
+app.get('/api/debug/cliente-error/:idCliente', authenticateToken, async (req, res) => {
+  try {
+    const { idCliente } = req.params;
+    
+    console.log('🔍 DEBUG: Iniciando consulta para cliente:', idCliente);
+    
+    const [clienteData] = await pool.execute(
+      `SELECT id_usuario, nombre, apellido, email FROM Usuario WHERE id_usuario = ?`,
+      [idCliente]
+    );
+    
+    console.log('✅ DEBUG: Cliente data:', clienteData);
+    
+    if (clienteData.length === 0) {
+      return res.json({ success: false, message: 'No encontrado' });
+    }
+
+    res.json({
+      success: true,
+      cliente: clienteData[0],
+      message: '✅ CONSULTA BÁSICA FUNCIONA'
+    });
+
+  } catch (error) {
+    console.error('❌ DEBUG ERROR:', error);
+    res.json({ 
+      success: false, 
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 startServer();
