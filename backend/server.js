@@ -1576,12 +1576,8 @@ app.post('/api/debug/reparar-cache-cliente/:idCliente', authenticateToken, async
     const sheetId = hojas[0].id_hoja_google;
 
     console.log('🔧 Reparando cache para cliente:', idCliente, 'Sheet:', sheetId);
-
-    // Reprocesar la hoja
     const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
     const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
-
-    // ✅ Asegurar que se guarda como JSON string válido
     const datosRutinaJSON = JSON.stringify(rutinaProcesada);
     
     console.log('💾 Guardando JSON en cache:', typeof datosRutinaJSON);
@@ -1858,9 +1854,6 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
       });
     }
 
-    console.log('🔍 Obteniendo datos para cliente:', idCliente);
-
-    // ✅ CONSULTA CORREGIDA - solo columnas que EXISTEN en la tabla Usuario
     const [clienteData] = await pool.execute(
       `SELECT 
         id_usuario, 
@@ -1872,14 +1865,12 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
         peso_actual,
         altura,
         fecha_registro
-        -- objetivo y experiencia NO EXISTEN, las removemos
        FROM Usuario 
        WHERE id_usuario = ?`,
       [idCliente]
     );
 
     if (clienteData.length === 0) {
-      console.log('❌ Cliente no encontrado:', idCliente);
       return res.status(404).json({
         success: false,
         message: 'Cliente no encontrado'
@@ -1887,9 +1878,7 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
     }
 
     const cliente = clienteData[0];
-    console.log('✅ Cliente encontrado:', cliente.nombre, cliente.apellido);
 
-    // El resto de las consultas se mantienen igual...
     const [estadisticasRutinas] = await pool.execute(
       `SELECT 
         COUNT(*) as total_sesiones,
@@ -1952,7 +1941,6 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
     const diasEntrenados = asistenciaMensual[0]?.dias_entrenados || 0;
     const consistencia = Math.round((diasEntrenados / 30) * 100);
 
-    // ✅ DATOS CORREGIDOS - sin objetivo y experiencia
     const datosCliente = {
       ...cliente,
       rutinas_completadas: estadisticasRutinas[0]?.sesiones_completadas || 0,
@@ -1969,19 +1957,13 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
               consistencia >= 30 ? 'irregular' : 'inactivo'
     };
 
-    console.log('📊 Datos cliente procesados:', {
-      nombre: datosCliente.nombre,
-      rutinas_completadas: datosCliente.rutinas_completadas,
-      consistencia: datosCliente.consistencia
-    });
-
     res.json({
       success: true,
       cliente: datosCliente
     });
 
   } catch (error) {
-    console.error('❌ Error obteniendo datos del cliente:', error);
+    console.error('Error obteniendo datos del cliente:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor: ' + error.message
