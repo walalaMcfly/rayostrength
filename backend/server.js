@@ -1859,6 +1859,8 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
     }
 
     console.log('🔍 Obteniendo datos para cliente:', idCliente);
+
+    // ✅ CONSULTA CORREGIDA - solo columnas que EXISTEN en la tabla Usuario
     const [clienteData] = await pool.execute(
       `SELECT 
         id_usuario, 
@@ -1869,9 +1871,8 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
         sexo,
         peso_actual,
         altura,
-        objetivo,
-        experiencia,
         fecha_registro
+        -- objetivo y experiencia NO EXISTEN, las removemos
        FROM Usuario 
        WHERE id_usuario = ?`,
       [idCliente]
@@ -1887,6 +1888,8 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
 
     const cliente = clienteData[0];
     console.log('✅ Cliente encontrado:', cliente.nombre, cliente.apellido);
+
+    // El resto de las consultas se mantienen igual...
     const [estadisticasRutinas] = await pool.execute(
       `SELECT 
         COUNT(*) as total_sesiones,
@@ -1949,6 +1952,7 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
     const diasEntrenados = asistenciaMensual[0]?.dias_entrenados || 0;
     const consistencia = Math.round((diasEntrenados / 30) * 100);
 
+    // ✅ DATOS CORREGIDOS - sin objetivo y experiencia
     const datosCliente = {
       ...cliente,
       rutinas_completadas: estadisticasRutinas[0]?.sesiones_completadas || 0,

@@ -22,8 +22,7 @@ export default function VinculacionHojaScreen() {
     try {
       setLoading(true);
       const token = await AsyncStorage.getItem('userToken');
-      
-      // URL CORREGIDA - sin /api duplicado
+    
       const response = await fetch(`${API_URL}/api/coach/cliente/vincular-hoja`, {
         method: 'POST', 
         headers: { 

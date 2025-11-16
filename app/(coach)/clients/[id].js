@@ -45,7 +45,7 @@ export default function ClientDetail() {
       setLoading(true);
       const token = await AsyncStorage.getItem('userToken');
       
-      // Cargar todos los datos desde el nuevo endpoint
+
       await loadDatosRealesCliente(token);
       await loadRutinaData(token);
       
@@ -58,103 +58,126 @@ export default function ClientDetail() {
     }
   };
 
-  const loadDatosRealesCliente = async (token) => {
-    try {
-      const response = await fetch(`${API_URL}/coach/cliente/${id}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+ const loadDatosRealesCliente = async (token) => {
+  try {
+    console.log('🔍 Cargando datos para cliente ID:', id);
+    console.log('🔑 Token:', token ? 'Presente' : 'Faltante');
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.cliente) {
-          const clienteData = result.cliente;
-          
-          // Actualizar estado del cliente con datos REALES
-          setCliente({
-            id_usuario: clienteData.id_usuario,
-            nombre: clienteData.nombre,
-            apellido: clienteData.apellido,
-            email: clienteData.email,
-            edad: clienteData.edad,
-            sexo: clienteData.sexo,
-            peso_actual: clienteData.peso_actual,
-            altura: clienteData.altura,
-            objetivo: clienteData.objetivo,
-            experiencia: clienteData.experiencia,
-            fecha_registro: clienteData.fecha_registro
-          });
+    const response = await fetch(`${API_URL}/coach/cliente/${id}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
-          // Actualizar datos de progreso con datos REALES
-          setProgresoData({
-            rutinas_completadas: clienteData.rutinas_completadas,
-            total_sesiones: clienteData.total_sesiones,
-            porcentaje_completitud: clienteData.porcentaje_completitud,
-            consistencia: clienteData.consistencia,
-            dias_entrenados_mes: clienteData.dias_entrenados_mes,
-            estado: clienteData.estado,
-            ultima_sesion: clienteData.ultima_sesion,
-            pesos_maximos: clienteData.pesos_maximos || [],
-            ejercicios_recientes: clienteData.ejercicios_recientes || []
-          });
+    console.log('📡 Response status:', response.status);
+    console.log('📡 Response ok:', response.ok);
 
-          // Actualizar datos de wellness con datos REALES
-          if (clienteData.wellness_hoy) {
-            setWellnessData({
-              fecha: new Date().toISOString().split('T')[0],
-              ...clienteData.wellness_hoy,
-              notas: 'Encuesta completada hoy'
-            });
-          } else {
-            setWellnessData(null); // No hay datos de wellness hoy
-          }
-
-          return;
-        }
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Error HTTP:', response.status, errorText);
+      
+      if (response.status === 404) {
+        console.log('❌ Cliente no encontrado en BD');
+        setDatosMinimos();
+        return;
       }
       
-      // Si falla, usar datos mínimos reales
-      setDatosMinimos();
+      if (response.status === 403) {
+        Alert.alert('Error', 'No tienes permisos para ver este cliente');
+        setDatosMinimos();
+        return;
+      }
       
-    } catch (error) {
-      console.error('Error cargando datos reales:', error);
+      throw new Error(`Error ${response.status}: ${errorText}`);
+    }
+    const result = await response.json();
+    console.log('📊 Datos recibidos del backend:', result);
+
+    if (result.success && result.cliente) {
+      const clienteData = result.cliente;
+      console.log('✅ Cliente data:', clienteData);
+     
+      setCliente({
+        id_usuario: clienteData.id_usuario,
+        nombre: clienteData.nombre,
+        apellido: clienteData.apellido,
+        email: clienteData.email,
+        edad: clienteData.edad,
+        sexo: clienteData.sexo,
+        peso_actual: clienteData.peso_actual,
+        altura: clienteData.altura,
+        objetivo: clienteData.objetivo,
+        experiencia: clienteData.experiencia,
+        fecha_registro: clienteData.fecha_registro
+      });
+
+      setProgresoData({
+        rutinas_completadas: clienteData.rutinas_completadas,
+        total_sesiones: clienteData.total_sesiones,
+        porcentaje_completitud: clienteData.porcentaje_completitud,
+        consistencia: clienteData.consistencia,
+        dias_entrenados_mes: clienteData.dias_entrenados_mes,
+        estado: clienteData.estado,
+        ultima_sesion: clienteData.ultima_sesion,
+        pesos_maximos: clienteData.pesos_maximos || [],
+        ejercicios_recientes: clienteData.ejercicios_recientes || []
+      });
+
+      if (clienteData.wellness_hoy) {
+        setWellnessData({
+          fecha: new Date().toISOString().split('T')[0],
+          ...clienteData.wellness_hoy,
+          notas: 'Encuesta completada hoy'
+        });
+      } else {
+        setWellnessData(null);
+      }
+
+      console.log('✅ Datos cargados exitosamente');
+      return;
+    } else {
+      console.log('❌ Backend respondió con success: false', result.message);
       setDatosMinimos();
     }
-  };
+    
+  } catch (error) {
+    console.error('❌ Error cargando datos reales:', error);
+    Alert.alert('Error', `No se pudieron cargar los datos: ${error.message}`);
+    setDatosMinimos();
+  }
+};
 
-  const setDatosMinimos = () => {
-    // Datos mínimos basados en información real de la BD
-    setCliente({
-      id_usuario: id,
-      nombre: 'Cliente',
-      apellido: 'Nuevo',
-      email: 'cliente@ejemplo.com',
-      edad: null,
-      sexo: null,
-      peso_actual: null,
-      altura: null,
-      objetivo: null,
-      experiencia: null,
-      fecha_registro: new Date().toISOString()
-    });
+ const setDatosMinimos = () => {
+  setCliente({
+    id_usuario: id,
+    nombre: 'Cliente',
+    apellido: 'Nuevo',
+    email: 'cliente@ejemplo.com',
+    edad: null,
+    sexo: null,
+    peso_actual: null,
+    altura: null,
+    // objetivo: null,  // REMOVER
+    // experiencia: null, // REMOVER
+    fecha_registro: new Date().toISOString()
+  });
 
-    setProgresoData({
-      rutinas_completadas: 0,
-      total_sesiones: 0,
-      porcentaje_completitud: 0,
-      consistencia: 0,
-      dias_entrenados_mes: 0,
-      estado: 'nuevo',
-      ultima_sesion: null,
-      pesos_maximos: [],
-      ejercicios_recientes: []
-    });
+  setProgresoData({
+    rutinas_completadas: 0,
+    total_sesiones: 0,
+    porcentaje_completitud: 0,
+    consistencia: 0,
+    dias_entrenados_mes: 0,
+    estado: 'nuevo',
+    ultima_sesion: null,
+    pesos_maximos: [],
+    ejercicios_recientes: []
+  });
 
-    setWellnessData(null);
-  };
+  setWellnessData(null);
+};
 
   const loadRutinaData = async (token) => {
     try {
