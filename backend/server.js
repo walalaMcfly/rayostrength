@@ -11,9 +11,20 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const safeSQLValue = (value) => {
-  if (value === undefined) return null;
+  if (value === undefined || value === null) return null;
   if (value === '') return null;
   return value;
+};
+
+
+const sanitizeParams = (params) => {
+  return params.map(param => {
+    if (param === undefined) {
+      console.warn('⚠️ Se detectó undefined, convirtiendo a null');
+      return null;
+    }
+    return param;
+  });
 };
 
 app.use(cors());
@@ -988,6 +999,7 @@ app.post('/api/progreso/sesion', authenticateToken, async (req, res) => {
 
 // Vincular hoja de Google Sheets a cliente
 app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res) => {
+  let connection;
   try {
     if (req.user.role !== 'coach') {
       return res.status(403).json({ success: false, message: 'Acceso denegado. Solo para coaches.' });
@@ -995,6 +1007,14 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
 
     const { idCliente, sheetUrl } = req.body;
     const idCoach = req.user.coachId;
+
+    // 🛠️ VALIDACIÓN EXTRA: Asegurar que los parámetros necesarios existen
+    if (!idCliente || !sheetUrl) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'idCliente y sheetUrl son requeridos' 
+      });
+    }
 
     const sheetId = extraerSheetId(sheetUrl);
     
@@ -1007,18 +1027,24 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
 
     console.log('🔄 Iniciando vinculación para cliente:', idCliente, 'Hoja:', sheetId);
 
+    // Obtener conexión para transacción
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
     // Verificar estado de Google Sheets
     try {
       const health = await googleSheets.healthCheck();
       console.log('🔍 Estado de Google Sheets:', health);
       
       if (!health.healthy) {
+        await connection.rollback();
         return res.status(500).json({
           success: false,
           message: `Problema con Google Sheets: ${health.message}`
         });
       }
     } catch (healthError) {
+      await connection.rollback();
       console.error('❌ Error en health check:', healthError);
       return res.status(500).json({
         success: false,
@@ -1026,14 +1052,15 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       });
     }
 
-    // Leer y procesar la hoja con enfoque simplificado
+    // Leer y procesar la hoja
     try {
-      console.log('🔍 Leyendo hoja con enfoque simplificado...');
+      console.log('🔍 Leyendo hoja...');
       
       const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
       console.log('✅ Datos crudos leídos, filas:', rawData.length);
       
       if (!rawData || rawData.length === 0) {
+        await connection.rollback();
         return res.status(400).json({ 
           success: false, 
           message: 'No se encontraron datos en la pestaña "4 semanas".' 
@@ -1044,19 +1071,30 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       console.log('✅ Ejercicios procesados:', rutinaProcesada.ejercicios.length);
       
       if (rutinaProcesada.ejercicios.length === 0) {
+        await connection.rollback();
         return res.status(400).json({ 
           success: false, 
           message: 'No se encontraron ejercicios. Verifica que las columnas C-I tengan datos.' 
         });
       }
 
-      // 🛠️ CORRECCIÓN: Asegurar que todos los valores sean válidos para SQL
-      const nombreHoja = `Hoja_${idCliente}`;
+      // 🛠️ VALIDACIÓN CRÍTICA: Asegurar que todos los valores para SQL sean válidos
+      const safeIdCliente = safeSQLValue(parseInt(idCliente));
+      const safeIdCoach = safeSQLValue(parseInt(idCoach));
+      const safeSheetId = safeSQLValue(sheetId);
+      const safeNombreHoja = safeSQLValue(`Hoja_${idCliente}`);
       
-      console.log('💾 Guardando en base de datos...');
+      console.log('💾 Parámetros sanitizados:', {
+        idCliente: safeIdCliente,
+        idCoach: safeIdCoach,
+        sheetId: safeSheetId,
+        nombreHoja: safeNombreHoja
+      });
+
+      // 🛠️ GUARDADO CON TRANSACCIÓN Y PARÁMETROS SANITIZADOS
+      console.log('💾 Guardando en HojasClientes...');
       
-      // Guardar en HojasClientes
-      const [result] = await pool.execute(
+      const [result] = await connection.execute(
         `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja) 
          VALUES (?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE 
@@ -1064,25 +1102,32 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
          nombre_hoja = VALUES(nombre_hoja),
          activa = TRUE,
          ultima_sincronizacion = NOW()`,
-        [idCliente, idCoach, sheetId, nombreHoja]
+        sanitizeParams([safeIdCliente, safeIdCoach, safeSheetId, safeNombreHoja])
       );
 
       console.log('✅ Guardado en HojasClientes, ID:', result.insertId);
 
-      // 🛠️ CORRECCIÓN: Asegurar que el JSON sea válido
+      // 🛠️ GUARDADO EN CACHE CON VALIDACIÓN EXTRA
       const datosRutinaJSON = JSON.stringify(rutinaProcesada);
+      if (!datosRutinaJSON) {
+        throw new Error('Error generando JSON de la rutina');
+      }
+
+      console.log('💾 Guardando en CacheRutinas...');
       
-      // Guardar en CacheRutinas
-      const [cacheResult] = await pool.execute(
+      const [cacheResult] = await connection.execute(
         `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
          VALUES (?, ?) 
          ON DUPLICATE KEY UPDATE 
          datos_rutina = VALUES(datos_rutina), 
          fecha_actualizacion = NOW()`,
-        [idCliente, datosRutinaJSON]
+        sanitizeParams([safeIdCliente, datosRutinaJSON])
       );
 
       console.log('✅ Guardado en CacheRutinas');
+
+      // Confirmar transacción
+      await connection.commit();
 
       res.json({ 
         success: true, 
@@ -1093,25 +1138,34 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       });
 
     } catch (googleError) {
-      console.error('❌ Error procesando hoja:', googleError.message);
+      await connection.rollback();
+      console.error('❌ Error en procesamiento:', googleError.message);
       
-      let errorMessage = `Error de Google Sheets: ${googleError.message}`;
+      let errorMessage = `Error: ${googleError.message}`;
       
       if (googleError.message.includes('PERMISSION_DENIED')) {
         errorMessage += `\n\n🔧 SOLUCIÓN: Comparte la hoja con: rayostrength-sheets@rayostrength-434a7.iam.gserviceaccount.com`;
       } else if (googleError.message.includes('NOT_FOUND')) {
         errorMessage += '\n\n🔧 SOLUCIÓN: Verifica que exista la pestaña "4 semanas"';
       } else if (googleError.message.includes('undefined')) {
-        errorMessage += '\n\n🔧 SOLUCIÓN: Error en base de datos - valores undefined detectados';
+        errorMessage += '\n\n🔧 SOLUCIÓN: Error de datos - contacta al administrador';
       }
       
       return res.status(403).json({ 
         success: false, 
         message: errorMessage
       });
+    } finally {
+      if (connection) {
+        connection.release();
+      }
     }
 
   } catch (error) {
+    if (connection) {
+      await connection.rollback();
+      connection.release();
+    }
     console.error('❌ Error general vinculando hoja:', error);
     res.status(500).json({ 
       success: false, 
@@ -1120,7 +1174,7 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
   }
 });
 
-// Procesamiento con columnas fijas
+// 🛠️ FUNCIÓN DE PROCESAMIENTO MEJORADA
 function procesarRutinaColumnasFijas(rawData) {
   if (!rawData || rawData.length < 2) {
     return { ejercicios: [], metadata: { totalEjercicios: 0 } };
@@ -1131,22 +1185,13 @@ function procesarRutinaColumnasFijas(rawData) {
   console.log('🔍 Procesando con columnas fijas...');
   console.log('📊 Total de filas:', rawData.length);
 
-  // ENFOQUE SIMPLIFICADO: Columnas fijas
-  // Columna C: Grupo muscular (índice 2)
-  // Columna D: Ejercicio (índice 3)
-  // Columna E: Video (índice 4)
-  // Columna F: Sets (índice 5)
-  // Columna G: Reps (índice 6)
-  // Columna H: RIR (índice 7)
-  // Columna I: Descanso (índice 8)
-
   // Buscar dónde empiezan los datos reales
   let startRow = 1;
   
   for (let i = 1; i < Math.min(10, rawData.length); i++) {
     const row = rawData[i];
     if (row && row.length >= 4 && row[3]) {
-      const ejercicio = row[3].toString().toLowerCase();
+      const ejercicio = (row[3] || '').toString().toLowerCase();
       if (ejercicio.includes('squat') || ejercicio.includes('press') || ejercicio.includes('pull')) {
         startRow = i;
         break;
@@ -1161,21 +1206,21 @@ function procesarRutinaColumnasFijas(rawData) {
     
     if (!row || row.length < 9) continue;
 
-    // 🛠️ CORRECCIÓN: Asegurar que los valores no sean undefined
-    const grupoMuscular = row[2] || '';        // Columna C
-    const nombreEjercicio = row[3] || '';      // Columna D
-    const video = row[4] || '';               // Columna E
-    const series = row[5] || '0';             // Columna F
-    const reps = row[6] || '';                // Columna G
-    const rir = row[7] || '';                 // Columna H
-    const descanso = row[8] || '';            // Columna I
+    // 🛠️ GARANTIZAR que ningún valor sea undefined
+    const grupoMuscular = safeSQLValue(row[2]);        // Columna C
+    const nombreEjercicio = safeSQLValue(row[3]);      // Columna D
+    const video = safeSQLValue(row[4]);               // Columna E
+    const series = safeSQLValue(row[5]);              // Columna F
+    const reps = safeSQLValue(row[6]);                // Columna G
+    const rir = safeSQLValue(row[7]);                 // Columna H
+    const descanso = safeSQLValue(row[8]);            // Columna I
 
     if (!nombreEjercicio || nombreEjercicio.toString().trim() === '') continue;
 
     const nombreLimpio = nombreEjercicio.toString().trim();
     if (nombreLimpio.toUpperCase().includes('EXERCISE') || nombreLimpio.includes('**')) continue;
 
-    // 🛠️ CORRECCIÓN: Asegurar valores válidos
+    // 🛠️ CREAR EJERCICIO CON VALORES GARANTIZADOS
     const ejercicio = {
       grupoMuscular: limpiarTexto(grupoMuscular) || 'General',
       nombre: nombreLimpio,
@@ -1285,44 +1330,14 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
   }
 });
 
-// Sincronizar rutina desde Google Sheets
-async function sincronizarRutinaDesdeSheets(idCliente, sheetId) {
-  try {
-    const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
-    const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
-    
-    // 🛠️ CORRECCIÓN: Asegurar JSON válido
-    const datosRutinaJSON = JSON.stringify(rutinaProcesada);
-    
-    await pool.execute(
-      `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
-       VALUES (?, ?) 
-       ON DUPLICATE KEY UPDATE 
-       datos_rutina = VALUES(datos_rutina), 
-       fecha_actualizacion = NOW()`,
-      [idCliente, datosRutinaJSON]
-    );
-
-    await pool.execute(
-      `UPDATE HojasClientes SET ultima_sincronizacion = NOW() WHERE id_cliente = ? AND activa = TRUE`,
-      [idCliente]
-    );
-
-    console.log(`✅ Rutina sincronizada para cliente ${idCliente}`);
-  } catch (error) {
-    console.error('Error sincronizando rutina:', error);
-    throw error;
-  }
-}
-
 function extraerSheetId(url) {
   if (!url) return null;
   const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return match ? match[1] : null;
 }
 
-// Endpoint de debug
-app.get('/api/debug/sheets-simple', authenticateToken, async (req, res) => {
+// Endpoint de debug mejorado
+app.get('/api/debug/sheets-safe', authenticateToken, async (req, res) => {
   try {
     const { sheetUrl } = req.query;
     
@@ -1335,6 +1350,10 @@ app.get('/api/debug/sheets-simple', authenticateToken, async (req, res) => {
     const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
     const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
     
+    // Simular guardado para test
+    const testParams = [1, 1, sheetId, 'test'];
+    const sanitizedTestParams = sanitizeParams(testParams);
+    
     res.json({
       success: true,
       sheetId: sheetId,
@@ -1342,7 +1361,11 @@ app.get('/api/debug/sheets-simple', authenticateToken, async (req, res) => {
       rawRows: rawData.length,
       ejerciciosCount: rutinaProcesada.ejercicios.length,
       primerosEjercicios: rutinaProcesada.ejercicios.slice(0, 3),
-      message: '✅ Enfoque simplificado funcionando'
+      testSanitization: {
+        original: testParams,
+        sanitized: sanitizedTestParams
+      },
+      message: '✅ Sistema de sanitización funcionando'
     });
     
   } catch (error) {
