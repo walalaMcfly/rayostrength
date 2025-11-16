@@ -1555,4 +1555,108 @@ app.post('/api/debug/reparar-cache-cliente/:idCliente', authenticateToken, async
   }
 });
 
+app.get('/api/debug/rutina-completa/:idCliente', authenticateToken, async (req, res) => {
+  try {
+    const { idCliente } = req.params;
+    
+    console.log('🔍 INICIANDO DEBUG RUTINA CLIENTE:', idCliente);
+    console.log('👤 Usuario solicitante:', req.user);
+    const [hojas] = await pool.execute(
+      `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
+       FROM HojasClientes hc
+       JOIN Coach c ON hc.id_coach = c.id_coach
+       WHERE hc.id_cliente = ? AND hc.activa = TRUE`,
+      [idCliente]
+    );
+
+    console.log('📄 Hojas vinculadas encontradas:', hojas.length);
+
+    if (hojas.length > 0) {
+      console.log('✅ Hoja vinculada:', hojas[0]);
+
+      const [cache] = await pool.execute(
+        `SELECT datos_rutina, fecha_actualizacion FROM CacheRutinas 
+         WHERE id_cliente = ? 
+         ORDER BY fecha_actualizacion DESC LIMIT 1`,
+        [idCliente]
+      );
+
+      console.log('💾 Cache encontrado:', cache.length);
+
+      if (cache.length > 0) {
+        console.log('📦 Cache fecha:', cache[0].fecha_actualizacion);
+        
+        let rutinaData;
+        try {
+          if (typeof cache[0].datos_rutina === 'string') {
+            rutinaData = JSON.parse(cache[0].datos_rutina);
+          } else {
+            rutinaData = cache[0].datos_rutina;
+          }
+          console.log('✅ JSON parseado correctamente');
+          console.log('📊 Ejercicios en cache:', rutinaData.ejercicios?.length || 0);
+        } catch (error) {
+          console.error('❌ Error parseando cache:', error);
+          rutinaData = { ejercicios: [], metadata: { error: 'JSON corrupto' } };
+        }
+
+        return res.json({
+          success: true,
+          source: 'cache',
+          personalizada: true,
+          coach: `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}`,
+          hojaVinculada: true,
+          ultimaSincronizacion: hojas[0].ultima_sincronizacion,
+          rutina: rutinaData,
+          debug: {
+            ejerciciosCount: rutinaData.ejercicios?.length || 0,
+            cacheType: typeof cache[0].datos_rutina,
+            cacheLength: cache[0].datos_rutina?.length || 0
+          }
+        });
+      }
+    }
+
+    console.log('🔄 Usando rutina general (fallback)');
+    try {
+      const data = await googleSheets.readSheet('Rayostrenght');
+      const rutinaGeneral = transformSheetDataToRutinas(data);
+      
+      console.log('📊 Rutina general ejercicios:', rutinaGeneral.length);
+
+      res.json({
+        success: true,
+        source: 'general',
+        personalizada: false,
+        hojaVinculada: false,
+        rutina: rutinaGeneral,
+        debug: {
+          ejerciciosCount: rutinaGeneral.length,
+          sheetDataRows: data?.length || 0
+        }
+      });
+    } catch (sheetError) {
+      console.error('❌ Error con rutina general:', sheetError);
+      res.json({
+        success: true,
+        source: 'empty',
+        personalizada: false,
+        hojaVinculada: false,
+        rutina: [],
+        debug: {
+          error: sheetError.message
+        }
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Error en debug rutina:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 startServer();
