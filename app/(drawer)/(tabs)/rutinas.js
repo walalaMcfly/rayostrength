@@ -125,11 +125,30 @@ export default function RutinasScreen() {
     }
   };
 
-  const onRefresh = async () => {
+ const onRefresh = async () => {
+  try {
     setRefreshing(true);
+    console.log(' Sincronizando con Google Sheets...');
+    
+    const token = await AsyncStorage.getItem('userToken');
+    const user = JSON.parse(await AsyncStorage.getItem('userData'));
+    await fetch(`${BASE_URL}/api/rutinas/sincronizar/${user.id_usuario}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    
+    // Recargar datos
     await cargarRutinaPersonalizada();
+    
+    console.log('✅ Sincronización completada');
+  } catch (error) {
+    console.error('❌ Error en sincronización:', error);
+  } finally {
     setRefreshing(false);
-  };
+  }
+};
 
   const abrirModalDatosReales = (ejercicio) => {
     setEjercicioEditando(ejercicio);
@@ -423,27 +442,25 @@ export default function RutinasScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>
-          {rutina?.esPersonalizada 
-          }
-        </Text>
-        
-        {rutina?.esPersonalizada ? (
+      {/* ✅ HEADER COMPACTO - SOLO INFO DEL COACH Y FECHA */}
+      {rutina?.esPersonalizada ? (
+        <View style={styles.headerCompact}>
           <View style={styles.infoContainer}>
             <Text style={styles.coachText}>Creada por: {rutina.coach}</Text>
             <Text style={styles.syncText}>
               Última actualización: {new Date(rutina.ultimaSincronizacion).toLocaleDateString()}
             </Text>
           </View>
-        ) : (
+        </View>
+      ) : (
+        <View style={styles.headerCompact}>
           <View style={styles.infoContainer}>
             <Text style={styles.infoText}>
               Tu coach aún no te ha asignado una rutina personalizada.
             </Text>
           </View>
-        )}
-      </View>
+        </View>
+      )}
 
       <FlatList
         data={rutina?.ejercicios || []}
@@ -464,6 +481,8 @@ export default function RutinasScreen() {
           </View>
         }
       />
+
+      {/* ✅ BOTÓN SOLO SE MUESTRA SI HAY RUTINAS CARGADAS */}
       {rutina?.ejercicios && rutina.ejercicios.length > 0 && (
         <TouchableOpacity 
           style={styles.botonCompletarRutina}
@@ -585,20 +604,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    padding: 20,
+  headerCompact: {
+    padding: 16,
     backgroundColor: colors.card,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 8,
-  },
   infoContainer: {
-    marginTop: 5,
   },
   coachText: {
     color: colors.active,

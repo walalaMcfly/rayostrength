@@ -1338,53 +1338,74 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
       );
 
       if (hojas.length > 0) {
-        const [cache] = await pool.execute(
-          `SELECT datos_rutina FROM CacheRutinas 
-           WHERE id_cliente = ? 
-           ORDER BY fecha_actualizacion DESC LIMIT 1`,
-          [idCliente]
-        );
+        const sheetId = hojas[0].id_hoja_google;
+        
+        console.log('🔄 Leyendo directamente de Google Sheets para cliente:', idCliente);
+        
+        try {
+          // ✅ SIEMPRE LEER DIRECTAMENTE DE GOOGLE SHEETS
+          const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
+          const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
+          
+          console.log('✅ Datos actualizados desde Google Sheets. Ejercicios:', rutinaProcesada.ejercicios.length);
 
-        if (cache.length > 0) {
-          let rutinaData;
-          const datosCache = cache[0].datos_rutina;
-          
-          console.log('📦 Tipo de datos en cache:', typeof datosCache);
-          console.log('📦 Primeros 200 chars de datos_rutina:', 
-            typeof datosCache === 'string' ? datosCache.substring(0, 200) : datosCache);
-          
-          try {
-            if (typeof datosCache === 'string') {
-              rutinaData = JSON.parse(datosCache);
-            } else if (typeof datosCache === 'object' && datosCache !== null) {
-              rutinaData = datosCache;
-            } else {
-              console.error('❌ Tipo de datos inesperado en cache:', typeof datosCache);
-              rutinaData = { ejercicios: [], metadata: { error: 'Formato inválido' } };
-            }
-          } catch (parseError) {
-            console.error('❌ Error parseando JSON del cache:', parseError);
-            console.error('❌ Contenido problemático:', datosCache);
-            rutinaData = { 
-              ejercicios: [], 
-              metadata: { 
-                error: 'JSON corrupto en base de datos',
-                totalEjercicios: 0,
-                fechaProcesamiento: new Date().toISOString()
-              }
-            };
-          }
+          // ✅ ACTUALIZAR EL CACHE (para futuras consultas rápidas)
+          const datosRutinaJSON = JSON.stringify(rutinaProcesada);
+          await pool.execute(
+            `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
+             VALUES (?, ?) 
+             ON DUPLICATE KEY UPDATE 
+             datos_rutina = VALUES(datos_rutina), 
+             fecha_actualizacion = NOW()`,
+            [idCliente, datosRutinaJSON]
+          );
 
           return res.json({
             personalizada: true,
             coach: `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}`,
             hojaVinculada: true,
-            ultimaSincronizacion: hojas[0].ultima_sincronizacion,
-            rutina: rutinaData
+            ultimaSincronizacion: new Date().toISOString(), // ✅ FECHA ACTUAL
+            rutina: rutinaProcesada,
+            fuente: 'google_sheets_directo' // ✅ PARA DEBUG
           });
+
+        } catch (googleError) {
+          console.error('❌ Error leyendo Google Sheets, usando cache:', googleError);
+          
+          // ✅ FALLBACK AL CACHE SI GOOGLE SHEETS FALLA
+          const [cache] = await pool.execute(
+            `SELECT datos_rutina FROM CacheRutinas 
+             WHERE id_cliente = ? 
+             ORDER BY fecha_actualizacion DESC LIMIT 1`,
+            [idCliente]
+          );
+
+          if (cache.length > 0) {
+            let rutinaData;
+            try {
+              if (typeof cache[0].datos_rutina === 'string') {
+                rutinaData = JSON.parse(cache[0].datos_rutina);
+              } else {
+                rutinaData = cache[0].datos_rutina;
+              }
+              
+              return res.json({
+                personalizada: true,
+                coach: `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}`,
+                hojaVinculada: true,
+                ultimaSincronizacion: hojas[0].ultima_sincronizacion,
+                rutina: rutinaData,
+                fuente: 'cache_fallback' // ✅ PARA DEBUG
+              });
+            } catch (parseError) {
+              console.error('❌ Error con cache también:', parseError);
+            }
+          }
         }
       }
 
+      // ✅ FALLBACK A RUTINA GENERAL SI NO HAY HOJA VINCULADA
+      console.log('🔄 Usando rutina general (fallback)');
       try {
         const data = await googleSheets.readSheet('Rayostrenght');
         const rutinaGeneral = transformSheetDataToRutinas(data);
@@ -1392,14 +1413,16 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
         res.json({
           personalizada: false,
           hojaVinculada: false,
-          rutina: rutinaGeneral
+          rutina: rutinaGeneral,
+          fuente: 'rutina_general'
         });
       } catch (sheetError) {
         console.error('Error con rutina general:', sheetError);
         res.json({
           personalizada: false,
           hojaVinculada: false,
-          rutina: []
+          rutina: [],
+          fuente: 'vacio'
         });
       }
     } else {
@@ -1749,6 +1772,76 @@ app.post('/api/debug/reparar-grupos-musculares/:idCliente', authenticateToken, a
     res.status(500).json({
       success: false,
       message: 'Error reparando grupos musculares: ' + error.message
+    });
+  }
+});
+
+
+app.post('/api/rutinas/sincronizar/:idCliente', authenticateToken, async (req, res) => {
+  try {
+    const { idCliente } = req.params;
+
+    if (req.user.role !== 'coach' && req.user.userId != idCliente) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'No tienes permisos para sincronizar esta rutina' 
+      });
+    }
+
+    console.log('🔄 Sincronización manual solicitada para cliente:', idCliente);
+
+    const [hojas] = await pool.execute(
+      `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
+       FROM HojasClientes hc
+       JOIN Coach c ON hc.id_coach = c.id_coach
+       WHERE hc.id_cliente = ? AND hc.activa = TRUE`,
+      [idCliente]
+    );
+
+    if (hojas.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No hay hoja vinculada para este cliente' 
+      });
+    }
+
+    const sheetId = hojas[0].id_hoja_google;
+    
+    // Leer directamente de Google Sheets
+    const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
+    const rutinaProcesada = procesarRutinaColumnasFizas(rawData);
+    
+    // Actualizar cache
+    const datosRutinaJSON = JSON.stringify(rutinaProcesada);
+    await pool.execute(
+      `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
+       VALUES (?, ?) 
+       ON DUPLICATE KEY UPDATE 
+       datos_rutina = VALUES(datos_rutina), 
+       fecha_actualizacion = NOW()`,
+      [idCliente, datosRutinaJSON]
+    );
+
+    // Actualizar fecha en HojasClientes
+    await pool.execute(
+      `UPDATE HojasClientes SET ultima_sincronizacion = NOW() WHERE id_cliente = ?`,
+      [idCliente]
+    );
+
+    console.log('✅ Sincronización manual completada. Ejercicios:', rutinaProcesada.ejercicios.length);
+
+    res.json({
+      success: true,
+      message: 'Rutina sincronizada correctamente',
+      ejerciciosProcesados: rutinaProcesada.ejercicios.length,
+      ultimaSincronizacion: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Error en sincronización manual:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error sincronizando rutina: ' + error.message
     });
   }
 });
