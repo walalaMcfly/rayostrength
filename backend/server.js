@@ -1050,7 +1050,12 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
         });
       }
 
-      // Guardar en base de datos
+      // 🛠️ CORRECCIÓN: Asegurar que todos los valores sean válidos para SQL
+      const nombreHoja = `Hoja_${idCliente}`;
+      
+      console.log('💾 Guardando en base de datos...');
+      
+      // Guardar en HojasClientes
       const [result] = await pool.execute(
         `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja) 
          VALUES (?, ?, ?, ?)
@@ -1059,16 +1064,25 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
          nombre_hoja = VALUES(nombre_hoja),
          activa = TRUE,
          ultima_sincronizacion = NOW()`,
-        [idCliente, idCoach, sheetId, `Hoja_${idCliente}`]
+        [idCliente, idCoach, sheetId, nombreHoja]
       );
 
-      // Guardar en cache
-      await pool.execute(
+      console.log('✅ Guardado en HojasClientes, ID:', result.insertId);
+
+      // 🛠️ CORRECCIÓN: Asegurar que el JSON sea válido
+      const datosRutinaJSON = JSON.stringify(rutinaProcesada);
+      
+      // Guardar en CacheRutinas
+      const [cacheResult] = await pool.execute(
         `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
          VALUES (?, ?) 
-         ON DUPLICATE KEY UPDATE datos_rutina = VALUES(datos_rutina), fecha_actualizacion = NOW()`,
-        [idCliente, JSON.stringify(rutinaProcesada)]
+         ON DUPLICATE KEY UPDATE 
+         datos_rutina = VALUES(datos_rutina), 
+         fecha_actualizacion = NOW()`,
+        [idCliente, datosRutinaJSON]
       );
+
+      console.log('✅ Guardado en CacheRutinas');
 
       res.json({ 
         success: true, 
@@ -1087,6 +1101,8 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
         errorMessage += `\n\n🔧 SOLUCIÓN: Comparte la hoja con: rayostrength-sheets@rayostrength-434a7.iam.gserviceaccount.com`;
       } else if (googleError.message.includes('NOT_FOUND')) {
         errorMessage += '\n\n🔧 SOLUCIÓN: Verifica que exista la pestaña "4 semanas"';
+      } else if (googleError.message.includes('undefined')) {
+        errorMessage += '\n\n🔧 SOLUCIÓN: Error en base de datos - valores undefined detectados';
       }
       
       return res.status(403).json({ 
@@ -1125,7 +1141,7 @@ function procesarRutinaColumnasFijas(rawData) {
   // Columna I: Descanso (índice 8)
 
   // Buscar dónde empiezan los datos reales
-  let startRow = 1; // Por defecto después de encabezados
+  let startRow = 1;
   
   for (let i = 1; i < Math.min(10, rawData.length); i++) {
     const row = rawData[i];
@@ -1145,19 +1161,21 @@ function procesarRutinaColumnasFijas(rawData) {
     
     if (!row || row.length < 9) continue;
 
-    const grupoMuscular = row[2];  // Columna C
-    const nombreEjercicio = row[3]; // Columna D
-    const video = row[4];          // Columna E
-    const series = row[5];         // Columna F
-    const reps = row[6];           // Columna G
-    const rir = row[7];            // Columna H
-    const descanso = row[8];       // Columna I
+    // 🛠️ CORRECCIÓN: Asegurar que los valores no sean undefined
+    const grupoMuscular = row[2] || '';        // Columna C
+    const nombreEjercicio = row[3] || '';      // Columna D
+    const video = row[4] || '';               // Columna E
+    const series = row[5] || '0';             // Columna F
+    const reps = row[6] || '';                // Columna G
+    const rir = row[7] || '';                 // Columna H
+    const descanso = row[8] || '';            // Columna I
 
     if (!nombreEjercicio || nombreEjercicio.toString().trim() === '') continue;
 
     const nombreLimpio = nombreEjercicio.toString().trim();
     if (nombreLimpio.toUpperCase().includes('EXERCISE') || nombreLimpio.includes('**')) continue;
 
+    // 🛠️ CORRECCIÓN: Asegurar valores válidos
     const ejercicio = {
       grupoMuscular: limpiarTexto(grupoMuscular) || 'General',
       nombre: nombreLimpio,
@@ -1273,11 +1291,16 @@ async function sincronizarRutinaDesdeSheets(idCliente, sheetId) {
     const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
     const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
     
+    // 🛠️ CORRECCIÓN: Asegurar JSON válido
+    const datosRutinaJSON = JSON.stringify(rutinaProcesada);
+    
     await pool.execute(
       `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
        VALUES (?, ?) 
-       ON DUPLICATE KEY UPDATE datos_rutina = VALUES(datos_rutina), fecha_actualizacion = NOW()`,
-      [idCliente, JSON.stringify(rutinaProcesada)]
+       ON DUPLICATE KEY UPDATE 
+       datos_rutina = VALUES(datos_rutina), 
+       fecha_actualizacion = NOW()`,
+      [idCliente, datosRutinaJSON]
     );
 
     await pool.execute(
