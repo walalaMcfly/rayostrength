@@ -302,7 +302,7 @@ app.get('/api/coach/clientes', authenticateToken, async (req, res) => {
   }
 });
 
-// ✅ ENDPOINT CORREGIDO - SIN fecha_registro Y SIN DUPLICADOS
+
 app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => {
   try {
     const { idCliente } = req.params;
@@ -357,9 +357,10 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
       [idCliente, today]
     );
 
+    // ✅ CONSULTAS CORREGIDAS - sin nombre_ejercicio
     const [pesosMaximos] = await pool.execute(
       `SELECT 
-        nombre_ejercicio,
+        id_ejercicio,
         MAX(CAST(REPLACE(REPLACE(peso_utilizado, 'kg', ''), ' ', '') AS DECIMAL)) as peso_maximo,
         MAX(fecha) as fecha_ultimo
        FROM ProgresoRutinas 
@@ -367,7 +368,7 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
          AND peso_utilizado IS NOT NULL 
          AND peso_utilizado != ''
          AND peso_utilizado != '0'
-       GROUP BY nombre_ejercicio
+       GROUP BY id_ejercicio
        ORDER BY peso_maximo DESC
        LIMIT 6`,
       [idCliente]
@@ -375,7 +376,7 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
 
     const [ejerciciosRecientes] = await pool.execute(
       `SELECT 
-        nombre_ejercicio,
+        id_ejercicio,
         peso_utilizado,
         reps_logradas,
         fecha
