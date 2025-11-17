@@ -16,16 +16,6 @@ const safeSQLValue = (value) => {
   return value;
 };
 
-const sanitizeParams = (params) => {
-  return params.map(param => {
-    if (param === undefined) {
-      console.warn('⚠️ Se detectó undefined, convirtiendo a null');
-      return null;
-    }
-    return param;
-  });
-};
-
 app.use(cors());
 app.use(express.json());
 
@@ -79,6 +69,7 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// AUTH ENDPOINTS
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { nombre, apellido, email, contraseña, edad, sexo, peso_actual, altura } = req.body;
@@ -266,6 +257,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// COACH ENDPOINTS
 app.get('/api/coach/clientes', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'coach') {
@@ -310,8 +302,11 @@ app.get('/api/coach/clientes', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/api/coach/notas', authenticateToken, async (req, res) => {
+// ✅ ENDPOINT CORREGIDO - SIN fecha_registro Y SIN DUPLICADOS
+app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => {
   try {
+    const { idCliente } = req.params;
+
     if (req.user.role !== 'coach') {
       return res.status(403).json({
         success: false,
@@ -319,150 +314,123 @@ app.get('/api/coach/notas', authenticateToken, async (req, res) => {
       });
     }
 
-    res.json({
-      success: true,
-      notas: [
-        {
-          id_nota: 1,
-          mensaje: "Bienvenido al panel de coach",
-          fecha_creacion: new Date().toISOString(),
-          leido: false
-        }
-      ]
-    });
+    const [clienteData] = await pool.execute(
+      `SELECT 
+        id_usuario, 
+        nombre, 
+        apellido, 
+        email,
+        edad,
+        sexo,
+        peso_actual,
+        altura
+       FROM Usuario 
+       WHERE id_usuario = ?`,
+      [idCliente]
+    );
 
-  } catch (error) {
-    console.error('Error obteniendo notas:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error interno del servidor'
-    });
-  }
-});
-
-app.get('/api/debug/rutinas/:semana', async (req, res) => {
-  try {
-    const { semana } = req.params;
-    const health = await googleSheets.healthCheck();
-    const data = await googleSheets.readSheet(semana);
-    const rutinas = transformSheetDataToRutinas(data);
-
-    res.json({
-      success: true,
-      message: '✅ DEBUG - Todo funciona correctamente',
-      health: health,
-      data_raw: data,
-      rutinas: rutinas
-    });
-    
-  } catch (error) {
-    console.error('Error en debug:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error en debug',
-      error: error.message,
-      stack: error.stack
-    });
-  }
-});
-
-app.get('/api/test-rutinas/:semana', async (req, res) => {
-  try {
-    const { semana } = req.params;
-    const data = await googleSheets.readSheet(semana);
-    
-    if (!data || data.length === 0) {
+    if (clienteData.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'No se encontraron datos en la hoja'
+        message: 'Cliente no encontrado'
       });
     }
-    
-    const rutinas = transformSheetDataToRutinas(data);
-    
+
+    const cliente = clienteData[0];
+
+    const [estadisticasRutinas] = await pool.execute(
+      `SELECT 
+        COUNT(*) as total_sesiones,
+        SUM(CASE WHEN completada = true THEN 1 ELSE 0 END) as sesiones_completadas,
+        AVG(CASE WHEN completada = true THEN porcentaje_completitud ELSE 0 END) as porcentaje_promedio,
+        MAX(fecha) as ultima_sesion
+       FROM SesionesEntrenamiento 
+       WHERE id_usuario = ?`,
+      [idCliente]
+    );
+
+    const today = new Date().toISOString().split('T')[0];
+    const [wellnessHoy] = await pool.execute(
+      `SELECT energia, sueno, estres, dolor_muscular, motivacion, apetito
+       FROM Wellness 
+       WHERE id_usuario = ? AND fecha = ?`,
+      [idCliente, today]
+    );
+
+    const [pesosMaximos] = await pool.execute(
+      `SELECT 
+        nombre_ejercicio,
+        MAX(CAST(REPLACE(REPLACE(peso_utilizado, 'kg', ''), ' ', '') AS DECIMAL)) as peso_maximo,
+        MAX(fecha) as fecha_ultimo
+       FROM ProgresoRutinas 
+       WHERE id_usuario = ? 
+         AND peso_utilizado IS NOT NULL 
+         AND peso_utilizado != ''
+         AND peso_utilizado != '0'
+       GROUP BY nombre_ejercicio
+       ORDER BY peso_maximo DESC
+       LIMIT 6`,
+      [idCliente]
+    );
+
+    const [ejerciciosRecientes] = await pool.execute(
+      `SELECT 
+        nombre_ejercicio,
+        peso_utilizado,
+        reps_logradas,
+        fecha
+       FROM ProgresoRutinas 
+       WHERE id_usuario = ? 
+         AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+       ORDER BY fecha DESC
+       LIMIT 5`,
+      [idCliente]
+    );
+
+    const [asistenciaMensual] = await pool.execute(
+      `SELECT 
+        COUNT(DISTINCT DATE(fecha)) as dias_entrenados
+       FROM SesionesEntrenamiento 
+       WHERE id_usuario = ? 
+         AND fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+         AND completada = true`,
+      [idCliente]
+    );
+
+    const diasEntrenados = asistenciaMensual[0]?.dias_entrenados || 0;
+    const consistencia = Math.round((diasEntrenados / 30) * 100);
+
+    const datosCliente = {
+      ...cliente,
+      rutinas_completadas: estadisticasRutinas[0]?.sesiones_completadas || 0,
+      total_sesiones: estadisticasRutinas[0]?.total_sesiones || 0,
+      porcentaje_completitud: Math.round(estadisticasRutinas[0]?.porcentaje_promedio || 0),
+      ultima_sesion: estadisticasRutinas[0]?.ultima_sesion,
+      wellness_hoy: wellnessHoy.length > 0 ? wellnessHoy[0] : null,
+      pesos_maximos: pesosMaximos,
+      ejercicios_recientes: ejerciciosRecientes,
+      consistencia: consistencia,
+      dias_entrenados_mes: diasEntrenados,
+      estado: diasEntrenados === 0 ? 'nuevo' : 
+              consistencia >= 70 ? 'activo' : 
+              consistencia >= 30 ? 'irregular' : 'inactivo'
+    };
+
     res.json({
       success: true,
-      rutinas: rutinas
+      cliente: datosCliente
     });
-    
+
   } catch (error) {
-    console.error('Error obteniendo rutinas:', error);
+    console.error('Error obteniendo datos del cliente:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al obtener las rutinas',
-      error: error.message,
-      sheet: req.params.semana
+      message: 'Error interno del servidor: ' + error.message
     });
   }
 });
 
-app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
-  try {
-    const { semana } = req.params;
-    const data = await googleSheets.readSheet(semana);
-    const rutinas = transformSheetDataToRutinas(data);
-    
-    res.json({
-      success: true,
-      rutinas: rutinas
-    });
-    
-  } catch (error) {
-    console.error('Error obteniendo rutinas:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener las rutinas'
-    });
-  }
-});
-
-app.post('/api/rutinas/completar', authenticateToken, async (req, res) => {
-  try {
-    const { semana, ejercicioId, setsCompletados } = req.body;
-    
-    await googleSheets.updateRow(semana, ejercicioId, {
-      setsCompletados: JSON.stringify(setsCompletados),
-      fechaCompletado: new Date().toISOString(),
-      usuarioId: req.user.userId
-    });
-    
-    res.json({
-      success: true,
-      message: 'Ejercicio marcado como completado'
-    });
-    
-  } catch (error) {
-    console.error('Error marcando ejercicio:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al actualizar el ejercicio'
-    });
-  }
-});
-
-app.post('/api/rutinas/notas', authenticateToken, async (req, res) => {
-  try {
-    const { semana, ejercicioId, notasCliente } = req.body;
-    
-    await googleSheets.updateRow(semana, ejercicioId, {
-      notasCliente: notasCliente,
-      usuarioId: req.user.userId
-    });
-    
-    res.json({
-      success: true,
-      message: 'Notas guardadas correctamente'
-    });
-    
-  } catch (error) {
-    console.error('Error guardando notas:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al guardar las notas'
-    });
-  }
-});
-
+// RUTINAS ENDPOINTS
 function transformSheetDataToRutinas(sheetData) {
   if (!sheetData || sheetData.length < 2) return [];
   
@@ -489,6 +457,27 @@ function transformSheetDataToRutinas(sheetData) {
   });
 }
 
+app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
+  try {
+    const { semana } = req.params;
+    const data = await googleSheets.readSheet(semana);
+    const rutinas = transformSheetDataToRutinas(data);
+    
+    res.json({
+      success: true,
+      rutinas: rutinas
+    });
+    
+  } catch (error) {
+    console.error('Error obteniendo rutinas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener las rutinas'
+    });
+  }
+});
+
+// WELLNESS ENDPOINTS
 app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
   try {
     const { energia, sueno, estres, dolor_muscular, motivacion, apetito } = req.body;
@@ -552,43 +541,7 @@ app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) => {
-  try {
-    const { 
-      id_ejercicio, 
-      nombre_ejercicio, 
-      sets_completados, 
-      reps_logradas, 
-      peso_utilizado, 
-      rir_final, 
-      rpe_final, 
-      notas 
-    } = req.body;
-    
-    const userId = req.user.userId;
-
-    const [result] = await pool.execute(
-      `INSERT INTO ProgresoRutinas 
-       (id_usuario, id_ejercicio, nombre_ejercicio, fecha, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas)
-       VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)`,
-      [userId, id_ejercicio, nombre_ejercicio, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas]
-    );
-
-    res.json({
-      success: true,
-      message: 'Progreso del ejercicio guardado correctamente',
-      id_progreso: result.insertId
-    });
-
-  } catch (error) {
-    console.error('Error guardando progreso de ejercicio:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al guardar el progreso del ejercicio'
-    });
-  }
-});
-
+// PROGRESO ENDPOINTS
 app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) => {
   try {
     const { 
@@ -641,252 +594,7 @@ app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) =
   }
 });
 
-app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, res) => {
-  try {
-    const { id_ejercicio, peso_utilizado, reps_logradas } = req.body;
-    const userId = req.user.userId;
-
-    if (!id_ejercicio) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'ID de ejercicio requerido' 
-      });
-    }
-
-    const safeValue = (value) => {
-      if (value === undefined || value === null) return null;
-      if (typeof value === 'string' && value.trim() === '') return null;
-      return value;
-    };
-
-    const pesoVal = safeValue(peso_utilizado);
-    const repsVal = safeValue(reps_logradas);
-
-    const query = `
-      INSERT INTO ProgresoRutinas 
-      (id_usuario, id_ejercicio, peso_utilizado, reps_logradas, fecha)
-      VALUES (?, ?, ?, ?, NOW())
-      ON DUPLICATE KEY UPDATE 
-      peso_utilizado = VALUES(peso_utilizado), 
-      reps_logradas = VALUES(reps_logradas),
-      fecha = NOW()
-    `;
-
-    const [result] = await pool.execute(query, [
-      userId,
-      id_ejercicio,
-      pesoVal,
-      repsVal
-    ]);
-
-    res.json({ 
-      success: true, 
-      message: 'Progreso guardado correctamente',
-      id: result.insertId 
-    });
-
-  } catch (error) {
-    console.error('Error en progreso:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Error interno del servidor',
-      details: error.message
-    });
-  }
-});
-
-app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-
-    const [sesionesSemanales] = await pool.execute(
-      `SELECT WEEK(fecha, 1) as semana, COUNT(*) as cantidad
-       FROM SesionesEntrenamiento 
-       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 5 WEEK)
-       GROUP BY WEEK(fecha, 1)
-       ORDER BY semana ASC
-       LIMIT 5`,
-      [userId]
-    );
-
-    const [wellnessData] = await pool.execute(
-      `SELECT energia, sueno, estres, dolor_muscular, motivacion
-       FROM Wellness 
-       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-       ORDER BY fecha ASC`,
-      [userId]
-    );
-
-    const [estadisticas] = await pool.execute(
-      `SELECT 
-        COUNT(*) as total_sesiones,
-        AVG(porcentaje_completitud) as porcentaje_promedio,
-        AVG(COALESCE(rpe_promedio, 0)) as rpe_promedio,
-        AVG(COALESCE(rir_promedio, 0)) as rir_promedio,
-        AVG(COALESCE(volumen_total, 0)) as volumen_promedio
-       FROM SesionesEntrenamiento 
-       WHERE id_usuario = ?`,
-      [userId]
-    );
-
-    const [mejorRPE] = await pool.execute(
-      `SELECT MAX(rpe_promedio) as mejor_rpe
-       FROM SesionesEntrenamiento 
-       WHERE id_usuario = ? AND rpe_promedio IS NOT NULL`,
-      [userId]
-    );
-
-    const datosProgreso = {
-      rutinasSemanales: sesionesSemanales.map(s => s.cantidad),
-      wellnessPromedio: wellnessData.map(w => 
-        Math.round((w.energia + w.sueno + w.motivacion) / 3)
-      )
-    };
-
-    if (wellnessData.length === 0) {
-      datosProgreso.wellnessPromedio = [0, 0, 0, 0, 0, 0, 0];
-    }
-
-    const datosEstadisticas = {
-      rutinasCompletadas: estadisticas[0]?.total_sesiones || 0,
-      totalRutinas: 20, 
-      porcentajeCompletitud: Math.round(estadisticas[0]?.porcentaje_promedio || 0),
-      mejorRPE: Math.round(mejorRPE[0]?.mejor_rpe || 0),
-      promedioRIR: Math.round(estadisticas[0]?.rir_promedio || 0),
-      volumenSemanal: Math.round(estadisticas[0]?.volumen_promedio || 0)
-    };
-
-    res.json({
-      success: true,
-      progressData: datosProgreso,
-      estadisticas: datosEstadisticas
-    });
-
-  } catch (error) {
-    console.error('Error obteniendo datos de progreso:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener los datos de progreso'
-    });
-  }
-});
-
-app.get('/api/progreso/resumen', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-
-    const [sesionesCompletadas] = await pool.execute(
-      `SELECT COUNT(*) as total, 
-              AVG(porcentaje_completitud) as promedio_completitud,
-              AVG(rpe_promedio) as rpe_promedio,
-              AVG(rir_promedio) as rir_promedio
-       FROM SesionesEntrenamiento 
-       WHERE id_usuario = ? AND completada = true`,
-      [userId]
-    );
-
-    const [wellnessPromedio] = await pool.execute(
-      `SELECT AVG(energia) as energia, 
-              AVG(sueno) as sueno,
-              AVG(estres) as estres,
-              AVG(dolor_muscular) as dolor_muscular,
-              AVG(motivacion) as motivacion
-       FROM Wellness 
-       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`,
-      [userId]
-    );
-
-    const [volumenSemanal] = await pool.execute(
-      `SELECT COALESCE(SUM(volumen_total), 0) as volumen_total
-       FROM SesionesEntrenamiento 
-       WHERE id_usuario = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`,
-      [userId]
-    );
-
-    const resumen = {
-      rutinasCompletadas: sesionesCompletadas[0]?.total || 0,
-      promedioCompletitud: Math.round(sesionesCompletadas[0]?.promedio_completitud || 0),
-      rpePromedio: Math.round(sesionesCompletadas[0]?.rpe_promedio || 0),
-      rirPromedio: Math.round(sesionesCompletadas[0]?.rir_promedio || 0),
-      wellnessPromedio: Math.round(
-        (wellnessPromedio[0]?.energia + 
-         wellnessPromedio[0]?.sueno + 
-         (10 - wellnessPromedio[0]?.estres) +
-         wellnessPromedio[0]?.motivacion) / 4
-      ) || 0,
-      volumenSemanal: volumenSemanal[0]?.volumen_total || 0
-    };
-
-    res.json({
-      success: true,
-      resumen: resumen
-    });
-
-  } catch (error) {
-    console.error('Error obteniendo progreso:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener el progreso'
-    });
-  }
-});
-
-app.get('/api/progreso/graficos', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-
-    const [rutinasSemanales] = await pool.execute(
-      `SELECT YEARWEEK(fecha) as semana, COUNT(*) as cantidad
-       FROM SesionesEntrenamiento 
-       WHERE id_usuario = ? AND completada = true
-       GROUP BY YEARWEEK(fecha)
-       ORDER BY semana DESC
-       LIMIT 5`,
-      [userId]
-    );
-  
-    const [wellnessDiario] = await pool.execute(
-      `SELECT fecha, energia, sueno, estres, dolor_muscular, motivacion
-       FROM Wellness 
-       WHERE id_usuario = ? 
-       ORDER BY fecha DESC 
-       LIMIT 7`,
-      [userId]
-    );
-
-    const [progresoPesos] = await pool.execute(
-      `SELECT fecha, AVG(CAST(REPLACE(peso_utilizado, 'kg', '') AS DECIMAL)) as peso_promedio
-       FROM ProgresoRutinas 
-       WHERE id_usuario = ? AND peso_utilizado IS NOT NULL
-       GROUP BY fecha
-       ORDER BY fecha DESC
-       LIMIT 30`,
-      [userId]
-    );
-
-    const datosGraficos = {
-      rutinasSemanales: rutinasSemanales.map(r => r.cantidad).reverse(),
-      wellnessPromedio: wellnessDiario.map(w => 
-        Math.round((w.energia + w.sueno + (10 - w.estres) + w.motivacion) / 4)
-      ).reverse(),
-      progresoPesos: progresoPesos.map(p => p.peso_promedio || 0).reverse(),
-      volumenEntrenamiento: rutinasSemanales.map(r => r.cantidad * 100).reverse()
-    };
-
-    res.json({
-      success: true,
-      datos: datosGraficos
-    });
-
-  } catch (error) {
-    console.error('Error obteniendo datos de gráficos:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener datos para gráficos'
-    });
-  }
-});
-
+// USER PROFILE ENDPOINTS
 app.get('/api/user/profile', authenticateToken, async (req, res) => {
   try {
     const [users] = await pool.execute(
@@ -957,58 +665,7 @@ app.put('/api/user/profile', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/progreso/ejercicio', authenticateToken, async (req, res) => {
-  try {
-    const { id_ejercicio, nombre_ejercicio, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas } = req.body;
-    const userId = req.user.userId;
-
-    await pool.execute(
-      `INSERT INTO ProgresoRutinas (id_usuario, id_ejercicio, nombre_ejercicio, fecha, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas)
-       VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)`,
-      [userId, id_ejercicio, nombre_ejercicio, sets_completados, reps_logradas, peso_utilizado, rir_final, rpe_final, notas]
-    );
-
-    res.json({
-      success: true,
-      message: 'Progreso del ejercicio guardado'
-    });
-
-  } catch (error) {
-    console.error('Error guardando progreso de ejercicio:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al guardar el progreso del ejercicio'
-    });
-  }
-});
-
-app.post('/api/progreso/sesion', authenticateToken, async (req, res) => {
-  try {
-    const { semana_rutina, total_ejercicios, ejercicios_completados, duracion_total_minutos, volumen_total, rpe_promedio, rir_promedio, notas_usuario } = req.body;
-    const userId = req.user.userId;
-
-    const porcentaje_completitud = (ejercicios_completados / total_ejercicios) * 100;
-
-    await pool.execute(
-      `INSERT INTO SesionesEntrenamiento (id_usuario, fecha, semana_rutina, total_ejercicios, ejercicios_completados, porcentaje_completitud, duracion_total_minutos, volumen_total, rpe_promedio, rir_promedio, notas_usuario, completada)
-       VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [userId, semana_rutina, total_ejercicios, ejercicios_completados, porcentaje_completitud, duracion_total_minutos, volumen_total, rpe_promedio, rir_promedio, notas_usuario, true]
-    );
-
-    res.json({
-      success: true,
-      message: 'Sesión de entrenamiento registrada'
-    });
-
-  } catch (error) {
-    console.error('Error registrando sesión:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al registrar la sesión de entrenamiento'
-    });
-  }
-});
-
+// GOOGLE SHEETS INTEGRATION
 app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res) => {
   let connection;
   try {
@@ -1207,7 +864,6 @@ function procesarRutinaColumnasFijas(rawData) {
   console.log('🔍 Procesando con columnas fijas...');
   console.log('📊 Total de filas:', rawData.length);
 
-  // Buscar dónde empiezan los datos reales (saltar headers)
   let startRow = 1;
   for (let i = 1; i < Math.min(10, rawData.length); i++) {
     const row = rawData[i];
@@ -1215,7 +871,6 @@ function procesarRutinaColumnasFijas(rawData) {
       const grupoMuscular = (row[2] || '').toString().trim();
       const nombreEjercicio = (row[3] || '').toString().trim();
       
-      // Si encontramos datos válidos en grupo muscular y ejercicio, empezamos aquí
       if (grupoMuscular && nombreEjercicio && 
           !grupoMuscular.toLowerCase().includes('grupo') &&
           !nombreEjercicio.toLowerCase().includes('ejercicio')) {
@@ -1231,29 +886,18 @@ function procesarRutinaColumnasFijas(rawData) {
     
     if (!row || row.length < 9) continue;
 
-    // 🎯 COLUMNAS CORRECTAS:
-    // C: Grupo muscular (índice 2)
-    // D: Ejercicio (índice 3) 
-    // E: Video (índice 4)
-    // F: Series (índice 5)
-    // G: Reps (índice 6)
-    // H: RIR (índice 7)
-    // I: Descanso (índice 8)
+    const grupoMuscular = safeSQLValue(row[2]);
+    const nombreEjercicio = safeSQLValue(row[3]);
+    const video = safeSQLValue(row[4]);
+    const series = safeSQLValue(row[5]);
+    const reps = safeSQLValue(row[6]);
+    const rir = safeSQLValue(row[7]);
+    const descanso = safeSQLValue(row[8]);
 
-    const grupoMuscular = safeSQLValue(row[2]);        // Columna C
-    const nombreEjercicio = safeSQLValue(row[3]);      // Columna D
-    const video = safeSQLValue(row[4]);               // Columna E
-    const series = safeSQLValue(row[5]);              // Columna F
-    const reps = safeSQLValue(row[6]);                // Columna G
-    const rir = safeSQLValue(row[7]);                 // Columna H
-    const descanso = safeSQLValue(row[8]);            // Columna I
-
-    // Validar que tenemos un ejercicio
     if (!nombreEjercicio || nombreEjercicio.toString().trim() === '') continue;
 
     const nombreLimpio = nombreEjercicio.toString().trim();
     
-    // Saltar filas que son headers o vacías
     if (nombreLimpio.toUpperCase().includes('EXERCISE') || 
         nombreLimpio.includes('**') ||
         nombreLimpio.toLowerCase().includes('ejercicio') ||
@@ -1261,7 +905,6 @@ function procesarRutinaColumnasFijas(rawData) {
       continue;
     }
 
-    // 🎯 CREAR EJERCICIO CON GRUPO MUSCULAR MEJORADO
     const ejercicio = {
       grupoMuscular: limpiarGrupoMuscular(grupoMuscular) || 'General',
       nombre: nombreLimpio,
@@ -1272,12 +915,6 @@ function procesarRutinaColumnasFijas(rawData) {
       descanso: limpiarTexto(descanso) || '',
       id: `ej-${i}`
     };
-
-    console.log(`📝 Ejercicio ${i}:`, {
-      grupo: ejercicio.grupoMuscular,
-      nombre: ejercicio.nombre,
-      series: ejercicio.series
-    });
 
     if (ejercicio.nombre && ejercicio.nombre.length > 2) {
       ejercicios.push(ejercicio);
@@ -1297,15 +934,10 @@ function procesarRutinaColumnasFijas(rawData) {
   };
 }
 
-
 function limpiarGrupoMuscular(texto) {
   if (!texto) return 'General';
-  
   const textoLimpio = texto.toString().trim();
-  
   if (textoLimpio === '') return 'General';
-  
-  // Convertir a formato consistente (primera letra mayúscula, resto minúsculas)
   return textoLimpio.charAt(0).toUpperCase() + textoLimpio.slice(1).toLowerCase();
 }
 
@@ -1321,6 +953,12 @@ function extraerRIRSimple(texto) {
   if (match) return parseInt(match[1]);
   const numberMatch = textoStr.match(/\d+/);
   return numberMatch ? parseInt(numberMatch[0]) : null;
+}
+
+function extraerSheetId(url) {
+  if (!url) return null;
+  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return match ? match[1] : null;
 }
 
 app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, async (req, res) => {
@@ -1343,13 +981,11 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
         console.log('🔄 Leyendo directamente de Google Sheets para cliente:', idCliente);
         
         try {
-          // ✅ SIEMPRE LEER DIRECTAMENTE DE GOOGLE SHEETS
           const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
           const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
           
           console.log('✅ Datos actualizados desde Google Sheets. Ejercicios:', rutinaProcesada.ejercicios.length);
 
-          // ✅ ACTUALIZAR EL CACHE (para futuras consultas rápidas)
           const datosRutinaJSON = JSON.stringify(rutinaProcesada);
           await pool.execute(
             `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
@@ -1364,15 +1000,14 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
             personalizada: true,
             coach: `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}`,
             hojaVinculada: true,
-            ultimaSincronizacion: new Date().toISOString(), // ✅ FECHA ACTUAL
+            ultimaSincronizacion: new Date().toISOString(),
             rutina: rutinaProcesada,
-            fuente: 'google_sheets_directo' // ✅ PARA DEBUG
+            fuente: 'google_sheets_directo'
           });
 
         } catch (googleError) {
           console.error('❌ Error leyendo Google Sheets, usando cache:', googleError);
           
-          // ✅ FALLBACK AL CACHE SI GOOGLE SHEETS FALLA
           const [cache] = await pool.execute(
             `SELECT datos_rutina FROM CacheRutinas 
              WHERE id_cliente = ? 
@@ -1395,7 +1030,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
                 hojaVinculada: true,
                 ultimaSincronizacion: hojas[0].ultima_sincronizacion,
                 rutina: rutinaData,
-                fuente: 'cache_fallback' // ✅ PARA DEBUG
+                fuente: 'cache_fallback'
               });
             } catch (parseError) {
               console.error('❌ Error con cache también:', parseError);
@@ -1404,7 +1039,6 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
         }
       }
 
-      // ✅ FALLBACK A RUTINA GENERAL SI NO HAY HOJA VINCULADA
       console.log('🔄 Usando rutina general (fallback)');
       try {
         const data = await googleSheets.readSheet('Rayostrenght');
@@ -1441,52 +1075,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
   }
 });
 
-function extraerSheetId(url) {
-  if (!url) return null;
-  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  return match ? match[1] : null;
-}
-
-app.get('/api/debug/token-info', authenticateToken, (req, res) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  
-  if (token) {
-    try {
-      const decoded = jwt.decode(token);
-      res.json({
-        tokenDecoded: decoded,
-        userFromMiddleware: req.user,
-        message: '✅ Token decodificado correctamente'
-      });
-    } catch (error) {
-      res.json({
-        error: 'No se pudo decodificar el token',
-        token: token.substring(0, 50) + '...'
-      });
-    }
-  } else {
-    res.status(401).json({ error: 'No hay token' });
-  }
-});
-
-app.get('/api/debug/coaches-detailed', async (req, res) => {
-  try {
-    const [coaches] = await pool.execute(
-      `SELECT id_coach, nombre, apellido, email, especialidad 
-       FROM Coach`
-    );
-    
-    res.json({
-      totalCoaches: coaches.length,
-      coaches: coaches
-    });
-  } catch (error) {
-    console.error('Error obteniendo coaches:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
+// START SERVER
 const startServer = async () => {
   try {
     await createTables();
@@ -1497,601 +1086,5 @@ const startServer = async () => {
     console.error('Error iniciando servidor:', error);
   }
 };
-
-// Diagnosticar cache actual
-app.get('/api/debug/ver-cache-cliente/:idCliente', authenticateToken, async (req, res) => {
-  try {
-    const { idCliente } = req.params;
-
-    const [cache] = await pool.execute(
-      `SELECT datos_rutina, fecha_actualizacion FROM CacheRutinas 
-       WHERE id_cliente = ? 
-       ORDER BY fecha_actualizacion DESC LIMIT 1`,
-      [idCliente]
-    );
-
-    if (cache.length === 0) {
-      return res.json({ 
-        success: true, 
-        message: 'No hay cache para este cliente', 
-        cache: null 
-      });
-    }
-
-    const cacheData = cache[0];
-    
-    // Analizar el contenido
-    let contenidoAnalizado = 'No se pudo analizar';
-    let esJSONValido = false;
-    
-    try {
-      if (typeof cacheData.datos_rutina === 'string') {
-        JSON.parse(cacheData.datos_rutina);
-        contenidoAnalizado = 'JSON válido';
-        esJSONValido = true;
-      } else {
-        contenidoAnalizado = `Tipo: ${typeof cacheData.datos_rutina}`;
-      }
-    } catch (e) {
-      contenidoAnalizado = 'JSON INVÁLIDO: ' + e.message;
-    }
-    
-    res.json({
-      success: true,
-      cache: {
-        tipo: typeof cacheData.datos_rutina,
-        contenido: cacheData.datos_rutina,
-        longitud: cacheData.datos_rutina ? cacheData.datos_rutina.length : 0,
-        fecha: cacheData.fecha_actualizacion,
-        analisis: contenidoAnalizado,
-        esJSONValido: esJSONValido
-      }
-    });
-
-  } catch (error) {
-    console.error('Error diagnosticando cache:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Endpoint para reparar cache corrupto
-app.post('/api/debug/reparar-cache-cliente/:idCliente', authenticateToken, async (req, res) => {
-  try {
-    const { idCliente } = req.params;
-
-    if (req.user.role !== 'coach') {
-      return res.status(403).json({ success: false, message: 'Solo coaches pueden reparar cache' });
-    }
-
-    // Obtener la hoja vinculada
-    const [hojas] = await pool.execute(
-      `SELECT id_hoja_google FROM HojasClientes WHERE id_cliente = ? AND activa = TRUE`,
-      [idCliente]
-    );
-
-    if (hojas.length === 0) {
-      return res.status(404).json({ success: false, message: 'No hay hoja vinculada para este cliente' });
-    }
-
-    const sheetId = hojas[0].id_hoja_google;
-
-    console.log('🔧 Reparando cache para cliente:', idCliente, 'Sheet:', sheetId);
-    const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
-    const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
-    const datosRutinaJSON = JSON.stringify(rutinaProcesada);
-    
-    console.log('💾 Guardando JSON en cache:', typeof datosRutinaJSON);
-    console.log('💾 Longitud del JSON:', datosRutinaJSON.length);
-    console.log('💾 Ejercicios procesados:', rutinaProcesada.ejercicios.length);
-
-    const [result] = await pool.execute(
-      `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
-       VALUES (?, ?) 
-       ON DUPLICATE KEY UPDATE 
-       datos_rutina = VALUES(datos_rutina), 
-       fecha_actualizacion = NOW()`,
-      [idCliente, datosRutinaJSON]
-    );
-
-    console.log('✅ Cache reparado para cliente:', idCliente);
-
-    res.json({
-      success: true,
-      message: 'Cache reparado correctamente',
-      ejerciciosProcesados: rutinaProcesada.ejercicios.length,
-      cacheActualizado: result.affectedRows
-    });
-
-  } catch (error) {
-    console.error('Error reparando cache:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error reparando cache: ' + error.message
-    });
-  }
-});
-
-app.get('/api/debug/rutina-completa/:idCliente', authenticateToken, async (req, res) => {
-  try {
-    const { idCliente } = req.params;
-    
-    console.log('🔍 INICIANDO DEBUG RUTINA CLIENTE:', idCliente);
-    console.log('👤 Usuario solicitante:', req.user);
-    const [hojas] = await pool.execute(
-      `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
-       FROM HojasClientes hc
-       JOIN Coach c ON hc.id_coach = c.id_coach
-       WHERE hc.id_cliente = ? AND hc.activa = TRUE`,
-      [idCliente]
-    );
-
-    console.log('📄 Hojas vinculadas encontradas:', hojas.length);
-
-    if (hojas.length > 0) {
-      console.log('✅ Hoja vinculada:', hojas[0]);
-
-      const [cache] = await pool.execute(
-        `SELECT datos_rutina, fecha_actualizacion FROM CacheRutinas 
-         WHERE id_cliente = ? 
-         ORDER BY fecha_actualizacion DESC LIMIT 1`,
-        [idCliente]
-      );
-
-      console.log('💾 Cache encontrado:', cache.length);
-
-      if (cache.length > 0) {
-        console.log('📦 Cache fecha:', cache[0].fecha_actualizacion);
-        
-        let rutinaData;
-        try {
-          if (typeof cache[0].datos_rutina === 'string') {
-            rutinaData = JSON.parse(cache[0].datos_rutina);
-          } else {
-            rutinaData = cache[0].datos_rutina;
-          }
-          console.log('✅ JSON parseado correctamente');
-          console.log('📊 Ejercicios en cache:', rutinaData.ejercicios?.length || 0);
-        } catch (error) {
-          console.error('❌ Error parseando cache:', error);
-          rutinaData = { ejercicios: [], metadata: { error: 'JSON corrupto' } };
-        }
-
-        return res.json({
-          success: true,
-          source: 'cache',
-          personalizada: true,
-          coach: `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}`,
-          hojaVinculada: true,
-          ultimaSincronizacion: hojas[0].ultima_sincronizacion,
-          rutina: rutinaData,
-          debug: {
-            ejerciciosCount: rutinaData.ejercicios?.length || 0,
-            cacheType: typeof cache[0].datos_rutina,
-            cacheLength: cache[0].datos_rutina?.length || 0
-          }
-        });
-      }
-    }
-
-    console.log('🔄 Usando rutina general (fallback)');
-    try {
-      const data = await googleSheets.readSheet('Rayostrenght');
-      const rutinaGeneral = transformSheetDataToRutinas(data);
-      
-      console.log('📊 Rutina general ejercicios:', rutinaGeneral.length);
-
-      res.json({
-        success: true,
-        source: 'general',
-        personalizada: false,
-        hojaVinculada: false,
-        rutina: rutinaGeneral,
-        debug: {
-          ejerciciosCount: rutinaGeneral.length,
-          sheetDataRows: data?.length || 0
-        }
-      });
-    } catch (sheetError) {
-      console.error('❌ Error con rutina general:', sheetError);
-      res.json({
-        success: true,
-        source: 'empty',
-        personalizada: false,
-        hojaVinculada: false,
-        rutina: [],
-        debug: {
-          error: sheetError.message
-        }
-      });
-    }
-
-  } catch (error) {
-    console.error('❌ Error en debug rutina:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      stack: error.stack
-    });
-  }
-});
-
-
-app.post('/api/debug/reparar-grupos-musculares/:idCliente', authenticateToken, async (req, res) => {
-  try {
-    const { idCliente } = req.params;
-
-    if (req.user.role !== 'coach') {
-      return res.status(403).json({ success: false, message: 'Solo coaches pueden reparar rutinas' });
-    }
-
-    // Obtener la hoja vinculada
-    const [hojas] = await pool.execute(
-      `SELECT id_hoja_google FROM HojasClientes WHERE id_cliente = ? AND activa = TRUE`,
-      [idCliente]
-    );
-
-    if (hojas.length === 0) {
-      return res.status(404).json({ success: false, message: 'No hay hoja vinculada para este cliente' });
-    }
-
-    const sheetId = hojas[0].id_hoja_google;
-
-    console.log('🔧 Reparando grupos musculares para cliente:', idCliente);
-
-    // Reprocesar la hoja con la función corregida
-    const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
-    const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
-
-    // Guardar en cache
-    const datosRutinaJSON = JSON.stringify(rutinaProcesada);
-    
-    const [result] = await pool.execute(
-      `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
-       VALUES (?, ?) 
-       ON DUPLICATE KEY UPDATE 
-       datos_rutina = VALUES(datos_rutina), 
-       fecha_actualizacion = NOW()`,
-      [idCliente, datosRutinaJSON]
-    );
-
-    console.log('✅ Grupos musculares reparados para cliente:', idCliente);
-
-    res.json({
-      success: true,
-      message: 'Grupos musculares reparados correctamente',
-      ejerciciosProcesados: rutinaProcesada.ejercicios.length,
-      gruposMusculares: rutinaProcesada.metadata.gruposMusculares
-    });
-
-  } catch (error) {
-    console.error('Error reparando grupos musculares:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error reparando grupos musculares: ' + error.message
-    });
-  }
-});
-
-
-app.post('/api/rutinas/sincronizar/:idCliente', authenticateToken, async (req, res) => {
-  try {
-    const { idCliente } = req.params;
-
-    if (req.user.role !== 'coach' && req.user.userId != idCliente) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'No tienes permisos para sincronizar esta rutina' 
-      });
-    }
-
-    console.log('🔄 Sincronización manual solicitada para cliente:', idCliente);
-
-    const [hojas] = await pool.execute(
-      `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
-       FROM HojasClientes hc
-       JOIN Coach c ON hc.id_coach = c.id_coach
-       WHERE hc.id_cliente = ? AND hc.activa = TRUE`,
-      [idCliente]
-    );
-
-    if (hojas.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'No hay hoja vinculada para este cliente' 
-      });
-    }
-
-    const sheetId = hojas[0].id_hoja_google;
-    
-    // Leer directamente de Google Sheets
-    const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
-    const rutinaProcesada = procesarRutinaColumnasFizas(rawData);
-    
-    // Actualizar cache
-    const datosRutinaJSON = JSON.stringify(rutinaProcesada);
-    await pool.execute(
-      `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
-       VALUES (?, ?) 
-       ON DUPLICATE KEY UPDATE 
-       datos_rutina = VALUES(datos_rutina), 
-       fecha_actualizacion = NOW()`,
-      [idCliente, datosRutinaJSON]
-    );
-
-    // Actualizar fecha en HojasClientes
-    await pool.execute(
-      `UPDATE HojasClientes SET ultima_sincronizacion = NOW() WHERE id_cliente = ?`,
-      [idCliente]
-    );
-
-    console.log('✅ Sincronización manual completada. Ejercicios:', rutinaProcesada.ejercicios.length);
-
-    res.json({
-      success: true,
-      message: 'Rutina sincronizada correctamente',
-      ejerciciosProcesados: rutinaProcesada.ejercicios.length,
-      ultimaSincronizacion: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('Error en sincronización manual:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error sincronizando rutina: ' + error.message
-    });
-  }
-});
-
-
-app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => {
-  try {
-    const { idCliente } = req.params;
-
-    if (req.user.role !== 'coach') {
-      return res.status(403).json({
-        success: false,
-        message: 'Acceso denegado. Solo para coaches.'
-      });
-    }
-
-    const [clienteData] = await pool.execute(
-      `SELECT 
-        id_usuario, 
-        nombre, 
-        apellido, 
-        email,
-        edad,
-        sexo,
-        peso_actual,
-        altura,
-        fecha_registro
-       FROM Usuario 
-       WHERE id_usuario = ?`,
-      [idCliente]
-    );
-
-    if (clienteData.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Cliente no encontrado'
-      });
-    }
-
-    const cliente = clienteData[0];
-
-    const [estadisticasRutinas] = await pool.execute(
-      `SELECT 
-        COUNT(*) as total_sesiones,
-        SUM(CASE WHEN completada = true THEN 1 ELSE 0 END) as sesiones_completadas,
-        AVG(CASE WHEN completada = true THEN porcentaje_completitud ELSE 0 END) as porcentaje_promedio,
-        MAX(fecha) as ultima_sesion
-       FROM SesionesEntrenamiento 
-       WHERE id_usuario = ?`,
-      [idCliente]
-    );
-
-    const today = new Date().toISOString().split('T')[0];
-    const [wellnessHoy] = await pool.execute(
-      `SELECT energia, sueno, estres, dolor_muscular, motivacion, apetito
-       FROM Wellness 
-       WHERE id_usuario = ? AND fecha = ?`,
-      [idCliente, today]
-    );
-
-    const [pesosMaximos] = await pool.execute(
-      `SELECT 
-        nombre_ejercicio,
-        MAX(CAST(REPLACE(REPLACE(peso_utilizado, 'kg', ''), ' ', '') AS DECIMAL)) as peso_maximo,
-        MAX(fecha) as fecha_ultimo
-       FROM ProgresoRutinas 
-       WHERE id_usuario = ? 
-         AND peso_utilizado IS NOT NULL 
-         AND peso_utilizado != ''
-         AND peso_utilizado != '0'
-       GROUP BY nombre_ejercicio
-       ORDER BY peso_maximo DESC
-       LIMIT 6`,
-      [idCliente]
-    );
-
-    const [ejerciciosRecientes] = await pool.execute(
-      `SELECT 
-        nombre_ejercicio,
-        peso_utilizado,
-        reps_logradas,
-        fecha
-       FROM ProgresoRutinas 
-       WHERE id_usuario = ? 
-         AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-       ORDER BY fecha DESC
-       LIMIT 5`,
-      [idCliente]
-    );
-
-    const [asistenciaMensual] = await pool.execute(
-      `SELECT 
-        COUNT(DISTINCT DATE(fecha)) as dias_entrenados
-       FROM SesionesEntrenamiento 
-       WHERE id_usuario = ? 
-         AND fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-         AND completada = true`,
-      [idCliente]
-    );
-
-    const diasEntrenados = asistenciaMensual[0]?.dias_entrenados || 0;
-    const consistencia = Math.round((diasEntrenados / 30) * 100);
-
-    const datosCliente = {
-      ...cliente,
-      rutinas_completadas: estadisticasRutinas[0]?.sesiones_completadas || 0,
-      total_sesiones: estadisticasRutinas[0]?.total_sesiones || 0,
-      porcentaje_completitud: Math.round(estadisticasRutinas[0]?.porcentaje_promedio || 0),
-      ultima_sesion: estadisticasRutinas[0]?.ultima_sesion,
-      wellness_hoy: wellnessHoy.length > 0 ? wellnessHoy[0] : null,
-      pesos_maximos: pesosMaximos,
-      ejercicios_recientes: ejerciciosRecientes,
-      consistencia: consistencia,
-      dias_entrenados_mes: diasEntrenados,
-      estado: diasEntrenados === 0 ? 'nuevo' : 
-              consistencia >= 70 ? 'activo' : 
-              consistencia >= 30 ? 'irregular' : 'inactivo'
-    };
-
-    res.json({
-      success: true,
-      cliente: datosCliente
-    });
-
-  } catch (error) {
-    console.error('Error obteniendo datos del cliente:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error interno del servidor: ' + error.message
-    });
-  }
-});
-
-
-app.get('/api/debug/cliente-error/:idCliente', authenticateToken, async (req, res) => {
-  try {
-    const { idCliente } = req.params;
-    
-    console.log('🔍 DEBUG: Iniciando consulta para cliente:', idCliente);
-    
-    const [clienteData] = await pool.execute(
-      `SELECT id_usuario, nombre, apellido, email FROM Usuario WHERE id_usuario = ?`,
-      [idCliente]
-    );
-    
-    console.log('✅ DEBUG: Cliente data:', clienteData);
-    
-    if (clienteData.length === 0) {
-      return res.json({ success: false, message: 'No encontrado' });
-    }
-
-    res.json({
-      success: true,
-      cliente: clienteData[0],
-      message: '✅ CONSULTA BÁSICA FUNCIONA'
-    });
-
-  } catch (error) {
-    console.error('❌ DEBUG ERROR:', error);
-    res.json({ 
-      success: false, 
-      error: error.message,
-      stack: error.stack
-    });
-  }
-});
-
-app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => {
-  try {
-    console.log('🔍 INICIANDO ENDPOINT - Coach ID:', req.user?.coachId, 'Cliente ID:', req.params.idCliente);
-    
-    const { idCliente } = req.params;
-
-    if (req.user.role !== 'coach') {
-      console.log('❌ ERROR: Usuario no es coach');
-      return res.status(403).json({
-        success: false,
-        message: 'Acceso denegado. Solo para coaches.'
-      });
-    }
-
-    console.log('✅ Paso 1: Verificación de coach OK');
-
-    const [clienteData] = await pool.execute(
-      `SELECT 
-        id_usuario, 
-        nombre, 
-        apellido, 
-        email,
-        edad,
-        sexo,
-        peso_actual,
-        altura,
-        fecha_registro
-       FROM Usuario 
-       WHERE id_usuario = ?`,
-      [idCliente]
-    );
-
-    console.log('✅ Paso 2: Consulta cliente ejecutada. Resultados:', clienteData.length);
-
-    if (clienteData.length === 0) {
-      console.log('❌ Cliente no encontrado');
-      return res.status(404).json({
-        success: false,
-        message: 'Cliente no encontrado'
-      });
-    }
-
-    const cliente = clienteData[0];
-    console.log('✅ Cliente encontrado:', cliente.nombre, cliente.apellido);
-
-    // ... el resto del código igual
-
-  } catch (error) {
-    console.error('❌ ERROR CRÍTICO EN ENDPOINT:', error);
-    console.error('❌ Stack:', error.stack);
-    res.status(500).json({
-      success: false,
-      message: 'Error interno del servidor: ' + error.message
-    });
-  }
-});
-
-app.get('/api/coach/cliente-simple/:idCliente', authenticateToken, async (req, res) => {
-  try {
-    console.log('🎯 ENDPOINT SIMPLE - User:', req.user);
-    
-    const { idCliente } = req.params;
-
-    // Solo datos básicos
-    const [clienteData] = await pool.execute(
-      `SELECT id_usuario, nombre, apellido, email FROM Usuario WHERE id_usuario = ?`,
-      [idCliente]
-    );
-
-    if (clienteData.length === 0) {
-      return res.status(404).json({ success: false, message: 'No encontrado' });
-    }
-
-    res.json({
-      success: true,
-      cliente: clienteData[0],
-      message: '✅ ENDPOINT SIMPLE FUNCIONA'
-    });
-
-  } catch (error) {
-    console.error('❌ ERROR SIMPLE:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      stack: error.stack
-    });
-  }
-});
 
 startServer();
