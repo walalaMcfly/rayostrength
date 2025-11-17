@@ -490,7 +490,7 @@ export default function RutinasScreen() {
             registrarSesionCompletada(ejerciciosCompletados);
           }}
         >
-          <Text style={styles.textoBotonCompletarRutina}>✅ Completar Rutina</Text>
+          <Text style={styles.textoBotonCompletarRutina}>Completar Rutina</Text>
         </TouchableOpacity>
       )}
 

@@ -53,74 +53,79 @@ export default function ProgresoScreen() {
       setLoading(true);
       const token = await AsyncStorage.getItem('userToken');
 
-      // Cargar datos del backend
-      const [progresoResponse, wellnessResponse] = await Promise.all([
-        fetch(`${BASE_URL}/api/progreso/datos-reales`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }),
-        fetch(`${BASE_URL}/api/wellness/ultimo`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        })
-      ]);
+      if (!token) {
+        Alert.alert('Error', 'No estás autenticado. Por favor inicia sesión nuevamente.');
+        return;
+      }
 
-      let datosProgreso = null;
-      let datosWellness = null;
+      const progresoResponse = await fetch(`${BASE_URL}/api/progreso/datos-reales`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
-      // Procesar respuesta de progreso
+      let datosReales = null;
+
       if (progresoResponse.ok) {
         const result = await progresoResponse.json();
+        
         if (result.success) {
-          datosProgreso = result.progressData || result.data;
-          console.log('✅ Datos de progreso cargados:', datosProgreso);
+          datosReales = result.progressData || result.data || result.estadisticas;
         }
       }
 
-      // Procesar respuesta de wellness
-      if (wellnessResponse.ok) {
-        const result = await wellnessResponse.json();
-        if (result.success) {
-          datosWellness = result.data;
-          console.log('✅ Datos de wellness cargados:', datosWellness);
-        }
-      }
-
-      // Actualizar estado con datos reales o de ejemplo
-      if (datosProgreso) {
-        setProgressData(datosProgreso);
-        setEstadisticas(calcularEstadisticas(datosProgreso));
+      if (datosReales && Object.keys(datosReales).length > 0) {
+        setProgressData(datosReales);
+        setEstadisticas(calcularEstadisticasReales(datosReales));
       } else {
-        // Datos de ejemplo mejorados
-        const datosEjemplo = generarDatosEjemplo();
-        setProgressData(datosEjemplo);
-        setEstadisticas(calcularEstadisticas(datosEjemplo));
-      }
-
-      // Si hay datos de wellness, pre-cargar el formulario
-      if (datosWellness) {
-        setWellnessData(datosWellness);
+        setProgressData({
+          rutinasSemanales: [0, 0, 0, 0, 0],
+          volumenSemanal: [0, 0, 0, 0, 0],
+          wellnessPromedio: [0, 0, 0, 0, 0]
+        });
+        setEstadisticas({
+          rutinasCompletadas: 0,
+          totalRutinas: 0,
+          porcentajeCompletitud: 0,
+          mejorRPE: 0,
+          promedioRIR: 0,
+          volumenSemanal: 0,
+          fuerzaProgreso: 0,
+          consistencia: 0
+        });
       }
       
     } catch (error) {
-      console.error('❌ Error cargando progreso:', error);
-      // En caso de error, usar datos de ejemplo
-      const datosEjemplo = generarDatosEjemplo();
-      setProgressData(datosEjemplo);
-      setEstadisticas(calcularEstadisticas(datosEjemplo));
+      setProgressData({
+        rutinasSemanales: [0, 0, 0, 0, 0],
+        volumenSemanal: [0, 0, 0, 0, 0],
+        wellnessPromedio: [0, 0, 0, 0, 0]
+      });
+      setEstadisticas({
+        rutinasCompletadas: 0,
+        totalRutinas: 0,
+        porcentajeCompletitud: 0,
+        mejorRPE: 0,
+        promedioRIR: 0,
+        volumenSemanal: 0,
+        fuerzaProgreso: 0,
+        consistencia: 0
+      });
+      
+      Alert.alert(
+        'Error de conexión', 
+        'No se pudieron cargar los datos de progreso. Verifica tu conexión.'
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const calcularEstadisticas = (datos) => {
-    if (!datos) {
+  const calcularEstadisticasReales = (datos) => {
+    if (!datos || Object.keys(datos).length === 0) {
       return {
         rutinasCompletadas: 0,
         totalRutinas: 0,
@@ -133,35 +138,40 @@ export default function ProgresoScreen() {
       };
     }
 
-    // Cálculos basados en datos reales
-    const rutinasSemanales = datos.rutinasSemanales || [3, 4, 5, 4, 6];
-    const volumenData = datos.volumenSemanal || [1200, 1350, 1420, 1380, 1500];
-    const rirData = datos.promedioRIR || [2.5, 2.3, 2.1, 2.4, 2.0];
-    const rpeData = datos.mejorRPE || [7, 8, 8, 7, 9];
+    if (datos.estadisticas) {
+      return {
+        rutinasCompletadas: datos.estadisticas.rutinasCompletadas || 0,
+        totalRutinas: datos.estadisticas.totalRutinas || 0,
+        porcentajeCompletitud: datos.estadisticas.porcentajeCompletitud || 0,
+        mejorRPE: datos.estadisticas.mejorRPE || 0,
+        promedioRIR: datos.estadisticas.promedioRIR || 0,
+        volumenSemanal: datos.estadisticas.volumenSemanal || 0,
+        fuerzaProgreso: datos.estadisticas.fuerzaProgreso || 0,
+        consistencia: datos.estadisticas.consistencia || 0
+      };
+    }
 
+    const rutinasSemanales = datos.rutinasSemanales || [0, 0, 0, 0, 0];
+    const volumenSemanal = datos.volumenSemanal || [0, 0, 0, 0, 0];
+    
     const rutinasCompletadas = rutinasSemanales.reduce((a, b) => a + b, 0);
-    const totalRutinas = rutinasSemanales.length * 7; // Asumiendo 7 días por semana
-    const porcentajeCompletitud = Math.round((rutinasCompletadas / totalRutinas) * 100);
+    const totalRutinas = rutinasSemanales.length * 7;
+    const porcentajeCompletitud = totalRutinas > 0 ? Math.round((rutinasCompletadas / totalRutinas) * 100) : 0;
     
-    const promedioRIR = (rirData.reduce((a, b) => a + b, 0) / rirData.length).toFixed(1);
-    const mejorRPE = Math.max(...rpeData);
-    const volumenSemanal = volumenData[volumenData.length - 1] || 0;
-    
-    // Calcular progreso de fuerza (última semana vs primera)
-    const fuerzaProgreso = volumenData.length > 1 
-      ? Math.round(((volumenData[volumenData.length - 1] - volumenData[0]) / volumenData[0]) * 100)
+    const volumenActual = volumenSemanal.length > 0 ? volumenSemanal[volumenSemanal.length - 1] : 0;
+    const fuerzaProgreso = volumenSemanal.length > 1 && volumenSemanal[0] > 0 
+      ? Math.round(((volumenActual - volumenSemanal[0]) / volumenSemanal[0]) * 100)
       : 0;
 
-    // Calcular consistencia (variación semanal)
     const consistencia = calcularConsistencia(rutinasSemanales);
 
     return {
       rutinasCompletadas,
       totalRutinas,
       porcentajeCompletitud,
-      mejorRPE,
-      promedioRIR,
-      volumenSemanal,
+      mejorRPE: datos.mejorRPE || 0,
+      promedioRIR: datos.promedioRIR || 0,
+      volumenSemanal: volumenActual,
       fuerzaProgreso,
       consistencia
     };
@@ -174,18 +184,7 @@ export default function ProgresoScreen() {
     const variaciones = rutinasSemanales.map(val => Math.abs(val - promedio));
     const variacionPromedio = variaciones.reduce((a, b) => a + b, 0) / variaciones.length;
     
-    // Convertir a porcentaje de consistencia (menos variación = más consistencia)
     return Math.max(0, 100 - (variacionPromedio / promedio * 100));
-  };
-
-  const generarDatosEjemplo = () => {
-    return {
-      rutinasSemanales: [3, 4, 5, 4, 6, 5, 4],
-      volumenSemanal: [1200, 1350, 1420, 1380, 1500, 1450, 1550],
-      promedioRIR: [2.5, 2.3, 2.1, 2.4, 2.0, 2.2, 1.9],
-      mejorRPE: [7, 8, 8, 7, 9, 8, 9],
-      wellnessPromedio: [6, 7, 8, 7, 6, 8, 7]
-    };
   };
 
   const onRefresh = () => {
@@ -204,7 +203,6 @@ export default function ProgresoScreen() {
     try {
       const token = await AsyncStorage.getItem('userToken');
       
-      // Verificar que todas las preguntas tengan respuesta
       const respuestasCompletas = wellnessQuestions.every(q => 
         wellnessData[q.id] !== undefined && wellnessData[q.id] !== null
       );
@@ -223,8 +221,6 @@ export default function ProgresoScreen() {
         apetito: wellnessData.apetito || 5
       };
 
-      console.log('📤 Enviando wellness:', datosWellness);
-
       const response = await fetch(`${BASE_URL}/api/wellness/registrar`, {
         method: 'POST',
         headers: {
@@ -235,13 +231,11 @@ export default function ProgresoScreen() {
       });
 
       const responseText = await response.text();
-      console.log('🔍 Respuesta del servidor:', responseText);
 
       let result;
       try {
         result = JSON.parse(responseText);
       } catch (parseError) {
-        console.error('❌ Error parseando JSON:', parseError);
         Alert.alert("Error", "Respuesta inválida del servidor");
         return;
       }
@@ -249,14 +243,12 @@ export default function ProgresoScreen() {
       if (result.success) {
         Alert.alert("✅ Encuesta guardada", "Tu estado wellness ha sido registrado correctamente");
         setWellnessData({});
-        // Recargar datos después de enviar
         cargarDatosProgreso();
       } else {
         Alert.alert("Error", result.message || result.error || "No se pudo guardar la encuesta");
       }
       
     } catch (error) {
-      console.error('❌ Error enviando wellness:', error);
       Alert.alert("Error de conexión", "No se pudo conectar con el servidor: " + error.message);
     }
   };
@@ -265,6 +257,14 @@ export default function ProgresoScreen() {
     <View style={styles.seccion}>
       <Text style={styles.tituloSeccion}>📈 Tu Progreso</Text>
       
+      {estadisticas.rutinasCompletadas === 0 && (
+        <View style={styles.avisoContainer}>
+          <Text style={styles.avisoTexto}>
+            📊 Aún no tienes datos de progreso. Completa tus primeras rutinas para ver tus estadísticas aquí.
+          </Text>
+        </View>
+      )}
+
       <View style={styles.estadisticasGrid}>
         <View style={styles.estadisticaCard}>
           <Text style={styles.estadisticaNumero}>{estadisticas.rutinasCompletadas}</Text>
@@ -304,8 +304,7 @@ export default function ProgresoScreen() {
         </View>
       </View>
 
-      {/* Gráficos mejorados */}
-      {progressData && progressData.rutinasSemanales && (
+      {progressData && progressData.rutinasSemanales && estadisticas.rutinasCompletadas > 0 ? (
         <View style={styles.graficosContainer}>
           <View style={styles.graficoContainer}>
             <Text style={styles.subtitulo}>Rutinas por Semana</Text>
@@ -345,9 +344,14 @@ export default function ProgresoScreen() {
             </View>
           )}
         </View>
+      ) : (
+        <View style={styles.sinDatosContainer}>
+          <Text style={styles.sinDatosTexto}>
+            Los gráficos aparecerán cuando tengas datos de entrenamiento
+          </Text>
+        </View>
       )}
 
-      {/* Información adicional útil */}
       <View style={styles.infoContainer}>
         <Text style={styles.infoTitulo}>💡 Tus Métricas de Rendimiento</Text>
         <View style={styles.metricaItem}>
@@ -431,7 +435,6 @@ export default function ProgresoScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header con botón de recarga */}
       <View style={styles.header}>
         <Text style={styles.tituloPrincipal}>Mi Progreso</Text>
         <TouchableOpacity style={styles.botonRecargar} onPress={onRefresh}>
@@ -439,7 +442,6 @@ export default function ProgresoScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Pestañas */}
       <View style={styles.tabsContainer}>
         <TouchableOpacity 
           style={[styles.tab, activeTab === "resumen" && styles.tabActiva]}
@@ -749,5 +751,31 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
     lineHeight: 20,
+  },
+  avisoContainer: {
+    backgroundColor: '#FFF3CD',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FFC107',
+  },
+  avisoTexto: {
+    color: '#856404',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  sinDatosContainer: {
+    backgroundColor: colors.card,
+    padding: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  sinDatosTexto: {
+    color: colors.placeholder,
+    fontSize: 16,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });

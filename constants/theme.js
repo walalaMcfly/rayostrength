@@ -3,12 +3,12 @@ export const colors = {
   background: "#000000",
   card: "#1c1c1e",
   text: "#FFFFFF",
-  accent: "#FFD700", // dorado
+  accent: "#FFD700", 
   border: "#333333",
   placeholder: "#AAAAAA",
   icon: "#FFD700",
   link: "#FFD700",
-  active: "#FFD700",
+  active: "#d8a129ff",
   inactive: "#444444",
 };
 
