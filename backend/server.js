@@ -1124,7 +1124,8 @@ const startServer = async () => {
 //Endpoint de progreso
 app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.userId;O
+    const userId = req.user.userId;
+    console.log('Obteniendo datos de progreso para usuario:', userId);
     const [recordsPeso] = await pool.execute(
       `SELECT 
         nombre_ejercicio,
@@ -1141,12 +1142,12 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       [userId]
     );
 
+    console.log(' Records de peso encontrados:', recordsPeso.length);
     const [seriesPorGrupo] = await pool.execute(
       `SELECT 
         pr.nombre_ejercicio,
         COUNT(*) as total_series,
         SUM(pr.sets_completados) as sets_totales,
-        -- Inferir grupo muscular del nombre del ejercicio
         CASE 
           WHEN pr.nombre_ejercicio LIKE '%press banca%' OR pr.nombre_ejercicio LIKE '%pectoral%' OR pr.nombre_ejercicio LIKE '%pecho%' THEN 'Pecho'
           WHEN pr.nombre_ejercicio LIKE '%sentadilla%' OR pr.nombre_ejercicio LIKE '%squat%' OR pr.nombre_ejercicio LIKE '%pierna%' OR pr.nombre_ejercicio LIKE '%cuádriceps%' THEN 'Piernas'
@@ -1163,6 +1164,8 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       [userId]
     );
 
+    console.log('Series por grupo muscular:', seriesPorGrupo.length);
+
     const [volumenData] = await pool.execute(
       `SELECT 
         AVG(CAST(REPLACE(REPLACE(peso_utilizado, 'kg', ''), ' ', '') AS DECIMAL)) as peso_promedio,
@@ -1175,8 +1178,6 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
          AND sets_completados > 0`,
       [userId]
     );
-
-  
     const [sesiones] = await pool.execute(
       `SELECT * FROM SesionesEntrenamiento 
        WHERE id_usuario = ? AND completada = TRUE 
@@ -1185,7 +1186,9 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       [userId]
     );
 
- 
+    console.log(' Sesiones completadas:', sesiones.length);
+
+
     const gruposMusculares = {};
     seriesPorGrupo.forEach(item => {
       const grupo = item.grupo_muscular;
@@ -1198,7 +1201,7 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
     const datosGraficoCircular = Object.entries(gruposMusculares).map(([grupo, series]) => ({
       grupo: grupo,
       series: series,
-      porcentaje: 0 
+      porcentaje: 0
     }));
 
     const totalSeries = datosGraficoCircular.reduce((sum, item) => sum + item.series, 0);
@@ -1206,15 +1209,12 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       item.porcentaje = totalSeries > 0 ? Math.round((item.series / totalSeries) * 100) : 0;
     });
 
- 
     const pesoPromedio = volumenData[0]?.peso_promedio || 0;
     const seriesTotales = volumenData[0]?.series_totales || 0;
     const diasEntrenados = volumenData[0]?.dias_entrenados || 0;
-    
     const volumenTotal = Math.round(pesoPromedio * seriesTotales);
     const mejorRecord = recordsPeso.length > 0 ? recordsPeso[0].record_peso : 0;
-
-    const fuerzaProgreso = recordsPeso.length > 0 ? 15 : 0; 
+    const fuerzaProgreso = recordsPeso.length > 0 ? 15 : 0;
 
     const datosProgreso = {
       graficoCircular: datosGraficoCircular,
@@ -1233,6 +1233,8 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       topRecords: recordsPeso.slice(0, 3)
     };
 
+    console.log('Datos de progreso procesados correctamente');
+
     res.json({
       success: true,
       progressData: datosProgreso,
@@ -1240,14 +1242,13 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error obteniendo datos de progreso:', error);
+    console.error(' Error obteniendo datos de progreso:', error);
     res.status(500).json({
       success: false,
       message: 'Error al cargar los datos de progreso: ' + error.message
     });
   }
 });
-
 
 app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) => {
   try {
@@ -1263,7 +1264,7 @@ app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) 
 
     const userId = req.user.userId;
 
-    console.log('💾 Guardando ejercicio:', {
+    console.log(' Guardando ejercicio:', {
       id_ejercicio,
       nombre_ejercicio,
       sets_completados,
@@ -1289,7 +1290,7 @@ app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) 
       ]
     );
 
-    console.log('✅ Ejercicio guardado con ID:', result.insertId);
+    console.log(' Ejercicio guardado con ID:', result.insertId);
 
     res.json({
       success: true,
@@ -1298,12 +1299,22 @@ app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) 
     });
 
   } catch (error) {
-    console.error('❌ Error guardando ejercicio:', error);
+    console.error(' Error guardando ejercicio:', error);
     res.status(500).json({
       success: false,
       message: 'Error al guardar el ejercicio: ' + error.message
     });
   }
+});
+
+//Debug para progreso
+
+app.get('/api/progreso/debug', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    message: 'Debug Funcionando',
+    userId: req.user.userId
+  });
 });
 
 // ENDPOINT PARA ACTUALIZAR PESO Y REPS 
