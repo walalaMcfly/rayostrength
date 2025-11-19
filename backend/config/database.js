@@ -1,6 +1,12 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
+console.log('🔧 Verificando conexión a:', {
+  host: dbConfig.host,
+  user: dbConfig.user,
+  database: dbConfig.database
+});
+
 const dbConfig = {
   host: process.env.DB_HOST || 'rayostrenght.clkkmwkg6o6s.us-east-2.rds.amazonaws.com',
   user: process.env.DB_USER || 'rayos',
@@ -18,7 +24,8 @@ const pool = mysql.createPool({
   queueLimit: 0,
   waitForConnections: true,
   keepAliveInitialDelay: 10000,
-  enableKeepAlive: true
+  enableKeepAlive: true,
+  ssl: { rejectUnauthorized: false }
 });
 
 const createTables = async () => {
