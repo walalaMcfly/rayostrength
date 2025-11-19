@@ -1091,11 +1091,29 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
 const startServer = async () => {
   try {
     await createTables();
-    app.listen(PORT, '0.0.0.0', () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`Servidor corriendo en puerto ${PORT}`);
     });
+
+    process.on('SIGINT', () => {
+      console.log('Apagando servidor...');
+      server.close(() => {
+        console.log('Servidor apagado');
+        process.exit(0);
+      });
+    });
+
+    process.on('SIGTERM', () => {
+      console.log('Recibida señal de terminación');
+      server.close(() => {
+        console.log('Servidor apagado');
+        process.exit(0);
+      });
+    });
+
   } catch (error) {
     console.error('Error iniciando servidor:', error);
+    process.exit(1);
   }
 };
 
