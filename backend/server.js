@@ -8,7 +8,7 @@ const { pool, createTables, testConnection } = require('./config/database');
 const googleSheets = require('./config/googleSheets');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8081;
 
 const safeSQLValue = (value) => {
   if (value === undefined || value === null) return null;
@@ -1091,7 +1091,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
 const startServer = async () => {
   try {
     await createTables();
-    const server = app.listen(3000, '0.0.0.0', () => {
+    const server = app.listen(8081, '0.0.0.0', () => {
       console.log(`Servidor corriendo en puerto ${PORT}`);
     });
 
