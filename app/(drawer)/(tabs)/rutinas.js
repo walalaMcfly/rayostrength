@@ -211,43 +211,53 @@ export default function RutinasScreen() {
     }
   };
 
-  const toggleSet = async (ejercicioId, setNumber) => {
+ const toggleSet = async (ejercicioId, setNumber) => {
+  try {
     const nuevosSets = { ...setsCompletados };
     if (!nuevosSets[ejercicioId]) nuevosSets[ejercicioId] = {};
     
     nuevosSets[ejercicioId][setNumber] = !nuevosSets[ejercicioId]?.[setNumber];
     setSetsCompletados(nuevosSets);
 
-    try {
-      const setsCompletadosCount = Object.values(nuevosSets[ejercicioId] || {}).filter(Boolean).length;
-      const ejercicio = rutina.ejercicios.find(e => e.id === ejercicioId);
-      
-      await fetch(`${BASE_URL}/api/progreso/guardar-ejercicio`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${userToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id_ejercicio: ejercicioId,
-          nombre_ejercicio: ejercicio?.nombre,
-          sets_completados: setsCompletadosCount,
-          reps_logradas: realesData[ejercicioId]?.repsReales || ejercicio?.repeticiones,
-          peso_utilizado: realesData[ejercicioId]?.pesoReal || ejercicio?.pesoSugerido,
-          rir_final: ejercicio?.rir,
-          notas: notasCliente[ejercicioId] || `Sets completados: ${setsCompletadosCount}`
-        }),
-      });
+    const setsCompletadosCount = Object.values(nuevosSets[ejercicioId] || {}).filter(Boolean).length;
+    const ejercicio = rutina.ejercicios.find(e => e.id === ejercicioId);
+    
+    const payload = {
+      id_ejercicio: ejercicioId,
+      nombre_ejercicio: ejercicio?.nombre,
+      sets_completados: setsCompletadosCount,
+      reps_logradas: realesData[ejercicioId]?.repsReales || ejercicio?.repeticiones,
+      peso_utilizado: realesData[ejercicioId]?.pesoReal || ejercicio?.pesoSugerido,
+      rir_final: ejercicio?.rir,
+      notas: notasCliente[ejercicioId] || `Completado: ${setsCompletadosCount}/${ejercicio?.series} sets`
+    };
 
-      if (setsCompletadosCount === ejercicio?.series) {
-        verificarRutinaCompletada();
-      }
+    console.log('Guardando progreso de sets:', payload);
 
-    } catch (error) {
-      console.error('Error guardando progreso:', error);
+    const response = await fetch(`${BASE_URL}/api/progreso/guardar-ejercicio`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${userToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      console.error(' Error guardando sets');
+    } else {
+      console.log('Sets guardados correctamente');
     }
-  };
 
+    if (setsCompletadosCount === ejercicio?.series) {
+      console.log(' Ejercicio completado!');
+      verificarRutinaCompletada();
+    }
+
+  } catch (error) {
+    console.error(' Error en toggleSet:', error);
+  }
+};
   const verificarRutinaCompletada = async () => {
     try {
       const ejerciciosCompletados = rutina.ejercicios.filter(ejercicio => {

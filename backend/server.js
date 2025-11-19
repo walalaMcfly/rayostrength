@@ -1120,4 +1120,246 @@ const startServer = async () => {
   }
 };
 
+
+//Endpoint de progreso
+app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;O
+    const [recordsPeso] = await pool.execute(
+      `SELECT 
+        nombre_ejercicio,
+        MAX(CAST(REPLACE(REPLACE(peso_utilizado, 'kg', ''), ' ', '') AS DECIMAL)) as record_peso,
+        MAX(fecha) as fecha_record
+       FROM ProgresoRutinas 
+       WHERE id_usuario = ? 
+         AND peso_utilizado IS NOT NULL 
+         AND peso_utilizado != ''
+         AND peso_utilizado != '0'
+       GROUP BY nombre_ejercicio
+       ORDER BY record_peso DESC
+       LIMIT 10`,
+      [userId]
+    );
+
+    const [seriesPorGrupo] = await pool.execute(
+      `SELECT 
+        pr.nombre_ejercicio,
+        COUNT(*) as total_series,
+        SUM(pr.sets_completados) as sets_totales,
+        -- Inferir grupo muscular del nombre del ejercicio
+        CASE 
+          WHEN pr.nombre_ejercicio LIKE '%press banca%' OR pr.nombre_ejercicio LIKE '%pectoral%' OR pr.nombre_ejercicio LIKE '%pecho%' THEN 'Pecho'
+          WHEN pr.nombre_ejercicio LIKE '%sentadilla%' OR pr.nombre_ejercicio LIKE '%squat%' OR pr.nombre_ejercicio LIKE '%pierna%' OR pr.nombre_ejercicio LIKE '%cuádriceps%' THEN 'Piernas'
+          WHEN pr.nombre_ejercicio LIKE '%peso muerto%' OR pr.nombre_ejercicio LIKE '%deadlift%' OR pr.nombre_ejercicio LIKE '%espalda%' OR pr.nombre_ejercicio LIKE '%remo%' THEN 'Espalda'
+          WHEN pr.nombre_ejercicio LIKE '%hombro%' OR pr.nombre_ejercicio LIKE '%press militar%' OR pr.nombre_ejercicio LIKE '%shoulder%' THEN 'Hombros'
+          WHEN pr.nombre_ejercicio LIKE '%bíceps%' OR pr.nombre_ejercicio LIKE '%curl%' THEN 'Bíceps'
+          WHEN pr.nombre_ejercicio LIKE '%tríceps%' OR pr.nombre_ejercicio LIKE '%extension%' THEN 'Tríceps'
+          ELSE 'Otros'
+        END as grupo_muscular
+       FROM ProgresoRutinas pr
+       WHERE pr.id_usuario = ? 
+         AND pr.sets_completados > 0
+       GROUP BY grupo_muscular, pr.nombre_ejercicio`,
+      [userId]
+    );
+
+    const [volumenData] = await pool.execute(
+      `SELECT 
+        AVG(CAST(REPLACE(REPLACE(peso_utilizado, 'kg', ''), ' ', '') AS DECIMAL)) as peso_promedio,
+        SUM(sets_completados) as series_totales,
+        COUNT(DISTINCT DATE(fecha)) as dias_entrenados
+       FROM ProgresoRutinas 
+       WHERE id_usuario = ? 
+         AND peso_utilizado IS NOT NULL 
+         AND peso_utilizado != ''
+         AND sets_completados > 0`,
+      [userId]
+    );
+
+  
+    const [sesiones] = await pool.execute(
+      `SELECT * FROM SesionesEntrenamiento 
+       WHERE id_usuario = ? AND completada = TRUE 
+       ORDER BY fecha DESC 
+       LIMIT 10`,
+      [userId]
+    );
+
+ 
+    const gruposMusculares = {};
+    seriesPorGrupo.forEach(item => {
+      const grupo = item.grupo_muscular;
+      if (!gruposMusculares[grupo]) {
+        gruposMusculares[grupo] = 0;
+      }
+      gruposMusculares[grupo] += item.sets_totales;
+    });
+
+    const datosGraficoCircular = Object.entries(gruposMusculares).map(([grupo, series]) => ({
+      grupo: grupo,
+      series: series,
+      porcentaje: 0 
+    }));
+
+    const totalSeries = datosGraficoCircular.reduce((sum, item) => sum + item.series, 0);
+    datosGraficoCircular.forEach(item => {
+      item.porcentaje = totalSeries > 0 ? Math.round((item.series / totalSeries) * 100) : 0;
+    });
+
+ 
+    const pesoPromedio = volumenData[0]?.peso_promedio || 0;
+    const seriesTotales = volumenData[0]?.series_totales || 0;
+    const diasEntrenados = volumenData[0]?.dias_entrenados || 0;
+    
+    const volumenTotal = Math.round(pesoPromedio * seriesTotales);
+    const mejorRecord = recordsPeso.length > 0 ? recordsPeso[0].record_peso : 0;
+
+    const fuerzaProgreso = recordsPeso.length > 0 ? 15 : 0; 
+
+    const datosProgreso = {
+      graficoCircular: datosGraficoCircular,
+      recordsPeso: recordsPeso.slice(0, 5), 
+      estadisticas: {
+        volumenTotal: volumenTotal,
+        pesoPromedio: Math.round(pesoPromedio),
+        seriesTotales: seriesTotales,
+        diasEntrenados: diasEntrenados,
+        mejorRecord: mejorRecord,
+        fuerzaProgreso: fuerzaProgreso,
+        totalEjercicios: recordsPeso.length,
+        consistencia: diasEntrenados > 0 ? Math.min(100, (diasEntrenados / 30) * 100) : 0
+      },
+      sesionesRecientes: sesiones,
+      topRecords: recordsPeso.slice(0, 3)
+    };
+
+    res.json({
+      success: true,
+      progressData: datosProgreso,
+      message: 'Datos de progreso cargados correctamente'
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo datos de progreso:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al cargar los datos de progreso: ' + error.message
+    });
+  }
+});
+
+
+app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) => {
+  try {
+    const {
+      id_ejercicio,
+      nombre_ejercicio,
+      sets_completados,
+      reps_logradas,
+      peso_utilizado,
+      rir_final,
+      notas
+    } = req.body;
+
+    const userId = req.user.userId;
+
+    console.log('💾 Guardando ejercicio:', {
+      id_ejercicio,
+      nombre_ejercicio,
+      sets_completados,
+      reps_logradas,
+      peso_utilizado,
+      userId
+    });
+
+    // Insertar en ProgresoRutinas
+    const [result] = await pool.execute(
+      `INSERT INTO ProgresoRutinas 
+       (id_usuario, id_ejercicio, nombre_ejercicio, fecha, sets_completados, reps_logradas, peso_utilizado, rir_final, notas)
+       VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?)`,
+      [
+        userId,
+        id_ejercicio,
+        nombre_ejercicio,
+        sets_completados || 0,
+        reps_logradas || '',
+        peso_utilizado || '',
+        rir_final || null,
+        notas || ''
+      ]
+    );
+
+    console.log('✅ Ejercicio guardado con ID:', result.insertId);
+
+    res.json({
+      success: true,
+      message: 'Ejercicio guardado correctamente',
+      id_progreso: result.insertId
+    });
+
+  } catch (error) {
+    console.error('❌ Error guardando ejercicio:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al guardar el ejercicio: ' + error.message
+    });
+  }
+});
+
+// ENDPOINT PARA ACTUALIZAR PESO Y REPS 
+app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, res) => {
+  try {
+    const {
+      id_ejercicio,
+      reps_logradas,
+      peso_utilizado
+    } = req.body;
+
+    const userId = req.user.userId;
+
+    console.log(' Actualizando ejercicio:', {
+      id_ejercicio,
+      reps_logradas,
+      peso_utilizado,
+      userId
+    });
+    const [ejerciciosHoy] = await pool.execute(
+      `SELECT id_progreso_rutina FROM ProgresoRutinas 
+       WHERE id_usuario = ? AND id_ejercicio = ? AND fecha = CURDATE()
+       ORDER BY fecha_creacion DESC LIMIT 1`,
+      [userId, id_ejercicio]
+    );
+
+    if (ejerciciosHoy.length > 0) {
+      await pool.execute(
+        `UPDATE ProgresoRutinas 
+         SET reps_logradas = ?, peso_utilizado = ?, fecha_creacion = NOW()
+         WHERE id_progreso_rutina = ?`,
+        [reps_logradas, peso_utilizado, ejerciciosHoy[0].id_progreso_rutina]
+      );
+      console.log(' Ejercicio actualizado');
+    } else {
+      const [result] = await pool.execute(
+        `INSERT INTO ProgresoRutinas 
+         (id_usuario, id_ejercicio, nombre_ejercicio, fecha, reps_logradas, peso_utilizado)
+         VALUES (?, ?, 'Ejercicio', CURDATE(), ?, ?)`,
+        [userId, id_ejercicio, reps_logradas, peso_utilizado]
+      );
+      console.log(' Nuevo ejercicio creado');
+    }
+
+    res.json({
+      success: true,
+      message: 'Datos actualizados correctamente'
+    });
+
+  } catch (error) {
+    console.error('Error actualizando ejercicio:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al actualizar el ejercicio: ' + error.message
+    });
+  }
+});
+
 startServer();

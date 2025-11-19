@@ -11,7 +11,6 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { BarChart } from "react-native-chart-kit";
 import { colors } from "../../../constants/theme";
 
 const screenWidth = Dimensions.get("window").width;
@@ -253,129 +252,88 @@ export default function ProgresoScreen() {
     }
   };
 
-  const renderResumen = () => (
-    <View style={styles.seccion}>
-      <Text style={styles.tituloSeccion}>📈 Tu Progreso</Text>
-      
-      {estadisticas.rutinasCompletadas === 0 && (
-        <View style={styles.avisoContainer}>
-          <Text style={styles.avisoTexto}>
-            📊 Aún no tienes datos de progreso. Completa tus primeras rutinas para ver tus estadísticas aquí.
-          </Text>
-        </View>
-      )}
 
-      <View style={styles.estadisticasGrid}>
-        <View style={styles.estadisticaCard}>
-          <Text style={styles.estadisticaNumero}>{estadisticas.rutinasCompletadas}</Text>
-          <Text style={styles.estadisticaLabel}>Rutinas Completadas</Text>
-          <View style={styles.barraProgreso}>
-            <View 
-              style={[
-                styles.barraProgresoFill, 
-                {width: `${Math.min(100, estadisticas.porcentajeCompletitud)}%`}
-              ]} 
-            />
-          </View>
-          <Text style={styles.estadisticaSubtexto}>{estadisticas.porcentajeCompletitud}% de consistencia</Text>
-        </View>
-
-        <View style={styles.estadisticaCard}>
-          <Text style={styles.estadisticaNumero}>{estadisticas.promedioRIR}</Text>
-          <Text style={styles.estadisticaLabel}>RIR Promedio</Text>
-          <Text style={styles.estadisticaSubtexto}>
-          </Text>
-        </View>
-
-        <View style={styles.estadisticaCard}>
-          <Text style={styles.estadisticaNumero}>{estadisticas.mejorRPE}/10</Text>
-          <Text style={styles.estadisticaLabel}>Mejor Esfuerzo</Text>
-          <Text style={styles.estadisticaSubtexto}>
-            {estadisticas.mejorRPE >= 8 ? '🔥 Excelente' : '💪 Buen trabajo'}
-          </Text>
-        </View>
-
-        <View style={styles.estadisticaCard}>
-          <Text style={styles.estadisticaNumero}>{estadisticas.volumenSemanal}</Text>
-          <Text style={styles.estadisticaLabel}>Volumen Total</Text>
-          <Text style={styles.estadisticaSubtexto}>
-            {estadisticas.fuerzaProgreso > 0 ? `📈 +${estadisticas.fuerzaProgreso}%` : 'Manteniendo'}
-          </Text>
-        </View>
+const renderResumen = () => (
+  <View style={styles.seccion}>
+    <Text style={styles.tituloSeccion}> Tu Progreso </Text>
+    
+    {estadisticas.seriesTotales === 0 ? (
+      <View style={styles.avisoContainer}>
+        <Text style={styles.avisoTexto}>
+          🏋️‍♂️ Aún no tienes datos de entrenamiento. 
+          {"\n"}Completa algunas rutinas registrando tus pesos y series para ver tu progreso aquí.
+        </Text>
       </View>
-
-      {progressData && progressData.rutinasSemanales && estadisticas.rutinasCompletadas > 0 ? (
-        <View style={styles.graficosContainer}>
-          <View style={styles.graficoContainer}>
-            <Text style={styles.subtitulo}>Rutinas por Semana</Text>
-            <BarChart
-              data={{
-                labels: progressData.rutinasSemanales.map((_, i) => `S${i+1}`),
-                datasets: [{ 
-                  data: progressData.rutinasSemanales.map(val => isFinite(val) ? val : 0) 
-                }]
-              }}
-              width={screenWidth - 64}
-              height={200}
-              chartConfig={chartConfig}
-              style={styles.grafico}
-              fromZero
-              showValuesOnTopOfBars
-            />
+    ) : (
+      <>
+        <View style={styles.estadisticasGrid}>
+          <View style={styles.estadisticaCard}>
+            <Text style={styles.estadisticaNumero}>{estadisticas.mejorRecord}kg</Text>
+            <Text style={styles.estadisticaLabel}>Mejor Record</Text>
+            <Text style={styles.estadisticaSubtexto}>
+              {progressData?.topRecords?.[0]?.nombre_ejercicio || 'Ejercicio'}
+            </Text>
           </View>
 
-          {progressData.volumenSemanal && (
-            <View style={styles.graficoContainer}>
-              <Text style={styles.subtitulo}>Progreso de Volumen (kg)</Text>
-              <BarChart
-                data={{
-                  labels: progressData.volumenSemanal.map((_, i) => `S${i+1}`),
-                  datasets: [{ 
-                    data: progressData.volumenSemanal.map(val => isFinite(val) ? Math.round(val/10) : 0) 
-                  }]
-                }}
-                width={screenWidth - 64}
-                height={200}
-                chartConfig={chartConfigVolumen}
-                style={styles.grafico}
-                fromZero
-                showValuesOnTopOfBars
-              />
+          <View style={styles.estadisticaCard}>
+            <Text style={styles.estadisticaNumero}>{estadisticas.volumenTotal}</Text>
+            <Text style={styles.estadisticaLabel}>Volumen Total</Text>
+            <Text style={styles.estadisticaSubtexto}>
+              {estadisticas.pesoPromedio}kg avg × {estadisticas.seriesTotales} series
+            </Text>
+          </View>
+
+          <View style={styles.estadisticaCard}>
+            <Text style={styles.estadisticaNumero}>{estadisticas.seriesTotales}</Text>
+            <Text style={styles.estadisticaLabel}>Series Totales</Text>
+            <Text style={styles.estadisticaSubtexto}>
+              {estadisticas.diasEntrenados} días
+            </Text>
+          </View>
+
+          <View style={styles.estadisticaCard}>
+            <Text style={styles.estadisticaNumero}>{estadisticas.consistencia}%</Text>
+            <Text style={styles.estadisticaLabel}>Consistencia</Text>
+            <Text style={styles.estadisticaSubtexto}>
+              {estadisticas.consistencia > 70 ? '🔥 Excelente' : '💪 En progreso'}
+            </Text>
+          </View>
+        </View>
+
+        {progressData?.graficoCircular && progressData.graficoCircular.length > 0 && (
+          <View style={styles.graficoCircularContainer}>
+            <Text style={styles.subtitulo}>Distribución de Series por Grupo Muscular</Text>
+            <View style={styles.graficoCircular}>
+              <View style={styles.graficoPlaceholder}>
+                <Text style={styles.graficoPlaceholderText}>
+                  📊 Gráfico Circular: {estadisticas.seriesTotales} series totales
+                </Text>
+                {progressData.graficoCircular.map((grupo, index) => (
+                  <View key={index} style={styles.grupoItem}>
+                    <Text style={styles.grupoTexto}>
+                      {grupo.grupo}: {grupo.series} series ({grupo.porcentaje}%)
+                    </Text>
+                  </View>
+                ))}
+              </View>
             </View>
-          )}
-        </View>
-      ) : (
-        <View style={styles.sinDatosContainer}>
-          <Text style={styles.sinDatosTexto}>
-            Los gráficos aparecerán cuando tengas datos de entrenamiento
-          </Text>
-        </View>
-      )}
-
-      <View style={styles.infoContainer}>
-        <Text style={styles.infoTitulo}>💡 Tus Métricas de Rendimiento</Text>
-        <View style={styles.metricaItem}>
-          <Text style={styles.metricaLabel}>Consistencia de Entrenamiento:</Text>
-          <Text style={styles.metricaValor}>{Math.round(estadisticas.consistencia)}%</Text>
-          <Text style={styles.metricaDescripcion}>
-            {estadisticas.consistencia > 80 ? 'Excelente consistencia' : 
-             estadisticas.consistencia > 60 ? 'Buena regularidad' : 
-             'Puedes mejorar la regularidad'}
-          </Text>
-        </View>
-        <View style={styles.metricaItem}>
-          <Text style={styles.metricaLabel}>Progreso de Fuerza:</Text>
-          <Text style={styles.metricaValor}>
-            {estadisticas.fuerzaProgreso > 0 ? `+${estadisticas.fuerzaProgreso}%` : 'Estable'}
-          </Text>
-          <Text style={styles.metricaDescripcion}>
-            {estadisticas.fuerzaProgreso > 10 ? '¡Gran progreso!' : 
-             'Mantén la progresión gradual'}
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
+          </View>
+        )}
+        {progressData?.topRecords && progressData.topRecords.length > 0 && (
+          <View style={styles.recordsContainer}>
+            <Text style={styles.subtitulo}>🏆 Tus Mejores Records</Text>
+            {progressData.topRecords.map((record, index) => (
+              <View key={index} style={styles.recordCard}>
+                <Text style={styles.recordEjercicio}>{record.nombre_ejercicio}</Text>
+                <Text style={styles.recordPeso}>{record.record_peso} kg</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </>
+    )}
+  </View>
+);
 
   const renderWellness = () => (
     <View style={styles.seccion}>
@@ -778,4 +736,57 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
+  
+  graficoCircularContainer: {
+  backgroundColor: colors.card,
+  padding: 16,
+  borderRadius: 12,
+  marginBottom: 16,
+},
+graficoCircular: {
+  alignItems: 'center',
+  marginTop: 10,
+},
+graficoPlaceholder: {
+  alignItems: 'center',
+},
+graficoPlaceholderText: {
+  color: colors.text,
+  fontSize: 16,
+  fontWeight: 'bold',
+  marginBottom: 10,
+},
+grupoItem: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  width: '100%',
+  paddingVertical: 4,
+},
+grupoTexto: {
+  color: colors.text,
+  fontSize: 14,
+},
+recordsContainer: {
+  backgroundColor: colors.card,
+  padding: 16,
+  borderRadius: 12,
+},
+recordCard: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  paddingVertical: 12,
+  borderBottomWidth: 1,
+  borderBottomColor: colors.border,
+},
+recordEjercicio: {
+  color: colors.text,
+  fontSize: 14,
+  flex: 1,
+},
+recordPeso: {
+  color: colors.active,
+  fontSize: 16,
+  fontWeight: 'bold',
+},
 });
