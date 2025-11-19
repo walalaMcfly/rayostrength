@@ -1091,7 +1091,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
 const startServer = async () => {
   try {
     await createTables();
-    const server = app.listen(PORT, '0.0.0.0', () => {
+    const server = app.listen(3000, '0.0.0.0', () => {
       console.log(`Servidor corriendo en puerto ${PORT}`);
     });
 
