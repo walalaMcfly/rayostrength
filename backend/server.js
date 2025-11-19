@@ -1132,7 +1132,7 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
     let volumenData = [];
     let sesiones = [];
 
-    // Obtener records de peso usando id_ejercicio (que sí existe)
+
     try {
       [recordsPeso] = await pool.execute(
         `SELECT 
@@ -1155,7 +1155,6 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       recordsPeso = [];
     }
 
-    // Obtener estadísticas de series y volumen
     try {
       [volumenData] = await pool.execute(
         `SELECT 
@@ -1174,8 +1173,6 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       console.log('Error en volumen data:', error.message);
       volumenData = [{}];
     }
-
-    // Obtener estadísticas básicas de rutinas completadas
     const [estadisticasRutinas] = await pool.execute(
       `SELECT 
         COUNT(*) as total_rutinas,
@@ -1186,7 +1183,6 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       [userId]
     );
 
-    // Obtener RPE y RIR promedios de sesiones
     let metricasEntrenamiento = [{ promedio_rpe: 0, promedio_rir: 0, mejor_rpe: 0, volumen_semanal: 0 }];
     try {
       [metricasEntrenamiento] = await pool.execute(
@@ -1203,7 +1199,7 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       console.log('Error obteniendo métricas:', error.message);
     }
 
-    // Calcular consistencia (últimos 30 días)
+
     let asistencia = [{ dias_entrenados: 0 }];
     try {
       [asistencia] = await pool.execute(
@@ -1222,7 +1218,6 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
     const diasEntrenados = asistencia[0]?.dias_entrenados || 0;
     const consistencia = Math.round((diasEntrenados / 30) * 100);
 
-    // Obtener sesiones recientes
     try {
       [sesiones] = await pool.execute(
         `SELECT * FROM SesionesEntrenamiento 
@@ -1236,14 +1231,13 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       sesiones = [];
     }
 
-    // Calcular métricas para el frontend
+
     const pesoPromedio = volumenData[0]?.peso_promedio || 0;
     const seriesTotales = volumenData[0]?.series_totales || 0;
     const diasEntrenadosProgreso = volumenData[0]?.dias_entrenados || 0;
     const volumenTotal = Math.round(pesoPromedio * seriesTotales);
     const mejorRecord = recordsPeso.length > 0 ? recordsPeso[0].record_peso : 0;
 
-    // Preparar estadísticas para el frontend
     const estadisticas = {
       rutinasCompletadas: estadisticasRutinas[0]?.rutinas_completadas || 0,
       totalRutinas: estadisticasRutinas[0]?.total_rutinas || 0,
@@ -1253,7 +1247,7 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       volumenSemanal: Math.round(metricasEntrenamiento[0]?.volumen_semanal || 0),
       fuerzaProgreso: recordsPeso.length > 0 ? 15 : 0,
       consistencia: consistencia,
-      // Nuevas métricas para el frontend corregido
+
       seriesTotales: seriesTotales,
       diasEntrenados: diasEntrenadosProgreso,
       volumenTotal: volumenTotal,
@@ -1261,7 +1255,7 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       pesoPromedio: Math.round(pesoPromedio)
     };
 
-    // Preparar datos para gráfico circular (simplificado)
+  
     const datosGraficoCircular = [
       { grupo: 'Pecho', series: Math.round(seriesTotales * 0.3), porcentaje: 30 },
       { grupo: 'Piernas', series: Math.round(seriesTotales * 0.25), porcentaje: 25 },
@@ -1397,35 +1391,36 @@ app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, re
 
     const userId = req.user.userId;
 
-    console.log(' Actualizando ejercicio:', {
+    console.log('Actualizando ejercicio:', {
       id_ejercicio,
       reps_logradas,
       peso_utilizado,
       userId
     });
+
     const [ejerciciosHoy] = await pool.execute(
-      `SELECT id_progreso_rutina FROM ProgresoRutinas 
+      `SELECT id_progreso FROM ProgresoRutinas 
        WHERE id_usuario = ? AND id_ejercicio = ? AND fecha = CURDATE()
-       ORDER BY fecha_creacion DESC LIMIT 1`,
+       ORDER BY id_progreso DESC LIMIT 1`,
       [userId, id_ejercicio]
     );
 
     if (ejerciciosHoy.length > 0) {
       await pool.execute(
         `UPDATE ProgresoRutinas 
-         SET reps_logradas = ?, peso_utilizado = ?, fecha_creacion = NOW()
-         WHERE id_progreso_rutina = ?`,
-        [reps_logradas, peso_utilizado, ejerciciosHoy[0].id_progreso_rutina]
+         SET reps_logradas = ?, peso_utilizado = ?
+         WHERE id_progreso = ?`,
+        [reps_logradas, peso_utilizado, ejerciciosHoy[0].id_progreso]
       );
-      console.log(' Ejercicio actualizado');
+      console.log('Ejercicio actualizado');
     } else {
       const [result] = await pool.execute(
         `INSERT INTO ProgresoRutinas 
-         (id_usuario, id_ejercicio, nombre_ejercicio, fecha, reps_logradas, peso_utilizado)
-         VALUES (?, ?, 'Ejercicio', CURDATE(), ?, ?)`,
+         (id_usuario, id_ejercicio, fecha, reps_logradas, peso_utilizado)
+         VALUES (?, ?, CURDATE(), ?, ?)`,
         [userId, id_ejercicio, reps_logradas, peso_utilizado]
       );
-      console.log(' Nuevo ejercicio creado');
+      console.log('Nuevo ejercicio creado');
     }
 
     res.json({
@@ -1441,5 +1436,4 @@ app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, re
     });
   }
 });
-
 startServer();
