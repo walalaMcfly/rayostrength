@@ -16,13 +16,34 @@ const safeSQLValue = (value) => {
   return value;
 };
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    "https://rayostrength-production.up.railway.app",
+    "http://localhost:3000",
+    "https://localhost:3000",
+    "http://localhost:5173",
+    "https://localhost:5173"
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
+
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'Backend Rayostrength funcionando',
+    service: 'Rayostrength API',
+    timestamp: new Date().toISOString(),
+    domain: 'rayostrength-production.up.railway.app'
+  });
+});
 
 app.get('/api/health', async (req, res) => {
   const dbStatus = await testConnection();
   res.json({ 
-    message: '🚀 ¡Backend funcionando!',
+    message: 'Backend funcionando',
     database: dbStatus ? 'Conectado' : 'Desconectado',
     timestamp: new Date().toISOString()
   });
@@ -41,14 +62,14 @@ const authenticateToken = (req, res, next) => {
 
   jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
     if (err) {
-      console.log('❌ JWT Verification Error:', err);
+      console.log('JWT Verification Error:', err);
       return res.status(403).json({
         success: false,
         message: 'Token inválido o expirado'
       });
     }
     
-    console.log('🔐 JWT Decoded:', decoded);
+    console.log('JWT Decoded:', decoded);
     
     if (decoded.role === 'coach') {
       req.user = {
@@ -64,12 +85,11 @@ const authenticateToken = (req, res, next) => {
       };
     }
     
-    console.log('👤 User object final:', req.user);
+    console.log('User object final:', req.user);
     next();
   });
 };
 
-// AUTH ENDPOINTS
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { nombre, apellido, email, contraseña, edad, sexo, peso_actual, altura } = req.body;
@@ -146,7 +166,7 @@ app.post('/api/auth/login', async (req, res) => {
     let user = null;
     let role = 'user';
 
-    console.log('🔐 Intentando login para:', email);
+    console.log('Intentando login para:', email);
 
     const [coaches] = await pool.execute(
       'SELECT * FROM Coach WHERE email = ?',
@@ -154,7 +174,7 @@ app.post('/api/auth/login', async (req, res) => {
     );
 
     if (coaches.length > 0) {
-      console.log('✅ Coach encontrado:', coaches[0].email);
+      console.log('Coach encontrado:', coaches[0].email);
       user = coaches[0];
       role = 'coach';
     } else {
@@ -164,14 +184,14 @@ app.post('/api/auth/login', async (req, res) => {
       );
 
       if (users.length > 0) {
-        console.log('✅ Usuario encontrado:', users[0].email);
+        console.log('Usuario encontrado:', users[0].email);
         user = users[0];
         role = 'user';
       }
     }
 
     if (!user) {
-      console.log('❌ Usuario no encontrado:', email);
+      console.log('Usuario no encontrado:', email);
       return res.status(401).json({
         success: false,
         message: 'Email o contraseña incorrectos'
@@ -180,14 +200,14 @@ app.post('/api/auth/login', async (req, res) => {
 
     const validPassword = await bcrypt.compare(contraseña, user.contraseña);
     if (!validPassword) {
-      console.log('❌ Contraseña incorrecta para:', email);
+      console.log('Contraseña incorrecta para:', email);
       return res.status(401).json({
         success: false,
         message: 'Email o contraseña incorrectos'
       });
     }
 
-    console.log('✅ Contraseña válida para:', email);
+    console.log('Contraseña válida para:', email);
 
     let tokenPayload;
     if (role === 'user') {
@@ -204,7 +224,7 @@ app.post('/api/auth/login', async (req, res) => {
       };
     }
 
-    console.log('🎫 Token payload creado:', tokenPayload);
+    console.log('Token payload creado:', tokenPayload);
 
     const token = jwt.sign(
       tokenPayload,
@@ -249,7 +269,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('❌ Error en login:', error);
+    console.error('Error en login:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor'
@@ -257,7 +277,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// COACH ENDPOINTS
 app.get('/api/coach/clientes', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'coach') {
@@ -301,7 +320,6 @@ app.get('/api/coach/clientes', authenticateToken, async (req, res) => {
     });
   }
 });
-
 
 app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => {
   try {
@@ -357,7 +375,6 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
       [idCliente, today]
     );
 
-    // ✅ CONSULTAS CORREGIDAS - sin nombre_ejercicio
     const [pesosMaximos] = await pool.execute(
       `SELECT 
         id_ejercicio,
@@ -431,7 +448,6 @@ app.get('/api/coach/cliente/:idCliente', authenticateToken, async (req, res) => 
   }
 });
 
-// RUTINAS ENDPOINTS
 function transformSheetDataToRutinas(sheetData) {
   if (!sheetData || sheetData.length < 2) return [];
   
@@ -478,7 +494,6 @@ app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
   }
 });
 
-// WELLNESS ENDPOINTS
 app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
   try {
     const { energia, sueno, estres, dolor_muscular, motivacion, apetito } = req.body;
@@ -542,7 +557,6 @@ app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
   }
 });
 
-// PROGRESO ENDPOINTS
 app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) => {
   try {
     const { 
@@ -595,7 +609,6 @@ app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) =
   }
 });
 
-// USER PROFILE ENDPOINTS
 app.get('/api/user/profile', authenticateToken, async (req, res) => {
   try {
     const [users] = await pool.execute(
@@ -666,11 +679,10 @@ app.put('/api/user/profile', authenticateToken, async (req, res) => {
   }
 });
 
-// GOOGLE SHEETS INTEGRATION
 app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res) => {
   let connection;
   try {
-    console.log('🔐 User object recibido:', req.user);
+    console.log('User object recibido:', req.user);
     
     if (req.user.role !== 'coach') {
       return res.status(403).json({ 
@@ -682,10 +694,10 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
     const { idCliente, sheetUrl } = req.body;
     const idCoach = req.user.coachId;
 
-    console.log('📥 Datos recibidos:', { idCliente, sheetUrl, idCoach });
+    console.log('Datos recibidos:', { idCliente, sheetUrl, idCoach });
 
     if (!idCoach || isNaN(idCoach)) {
-      console.log('❌ CoachId inválido:', idCoach);
+      console.log('CoachId inválido:', idCoach);
       return res.status(400).json({ 
         success: false, 
         message: 'ID de coach inválido. El coach no está correctamente autenticado.' 
@@ -698,14 +710,14 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
     );
     
     if (coachExists.length === 0) {
-      console.log('❌ Coach no encontrado en BD con id:', idCoach);
+      console.log('Coach no encontrado en BD con id:', idCoach);
       return res.status(404).json({
         success: false,
         message: 'Coach no encontrado en la base de datos'
       });
     }
 
-    console.log('✅ Coach verificado:', coachExists[0]);
+    console.log('Coach verificado:', coachExists[0]);
 
     if (!idCliente || !sheetUrl) {
       return res.status(400).json({ 
@@ -722,7 +734,7 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       });
     }
 
-    console.log('🔄 Iniciando vinculación para:', {
+    console.log('Iniciando vinculación para:', {
       coach: coachExists[0].nombre + ' ' + coachExists[0].apellido,
       cliente: idCliente,
       hoja: sheetId
@@ -733,7 +745,7 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
 
     try {
       const health = await googleSheets.healthCheck();
-      console.log('🔍 Google Sheets health:', health);
+      console.log('Google Sheets health:', health);
       
       if (!health.healthy) {
         await connection.rollback();
@@ -743,9 +755,9 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
         });
       }
 
-      console.log('📊 Leyendo hoja de Google Sheets...');
+      console.log('Leyendo hoja de Google Sheets...');
       const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
-      console.log('✅ Datos crudos leídos, filas:', rawData.length);
+      console.log('Datos crudos leídos, filas:', rawData.length);
       
       if (!rawData || rawData.length === 0) {
         await connection.rollback();
@@ -756,7 +768,7 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       }
 
       const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
-      console.log('✅ Ejercicios procesados:', rutinaProcesada.ejercicios.length);
+      console.log('Ejercicios procesados:', rutinaProcesada.ejercicios.length);
       
       if (rutinaProcesada.ejercicios.length === 0) {
         await connection.rollback();
@@ -771,14 +783,14 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       const safeSheetId = sheetId;
       const safeNombreHoja = `Hoja_${idCliente}`;
 
-      console.log('💾 Parámetros para guardar:', {
+      console.log('Parámetros para guardar:', {
         idCliente: safeIdCliente,
         idCoach: safeIdCoach,
         sheetId: safeSheetId,
         nombreHoja: safeNombreHoja
       });
 
-      console.log('💾 Guardando en HojasClientes...');
+      console.log('Guardando en HojasClientes...');
       const [result] = await connection.execute(
         `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja) 
          VALUES (?, ?, ?, ?)
@@ -790,10 +802,10 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
         [safeIdCliente, safeIdCoach, safeSheetId, safeNombreHoja]
       );
 
-      console.log('✅ Guardado en HojasClientes, resultado:', result);
+      console.log('Guardado en HojasClientes, resultado:', result);
 
       const datosRutinaJSON = JSON.stringify(rutinaProcesada);
-      console.log('💾 Guardando en CacheRutinas...');
+      console.log('Guardando en CacheRutinas...');
       
       const [cacheResult] = await connection.execute(
         `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
@@ -804,13 +816,13 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
         [safeIdCliente, datosRutinaJSON]
       );
 
-      console.log('✅ Guardado en CacheRutinas');
+      console.log('Guardado en CacheRutinas');
 
       await connection.commit();
 
       res.json({ 
         success: true, 
-        message: '✅ Hoja vinculada correctamente', 
+        message: 'Hoja vinculada correctamente', 
         coach: coachExists[0],
         detalles: {
           cliente: idCliente,
@@ -822,14 +834,14 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
 
     } catch (googleError) {
       await connection.rollback();
-      console.error('❌ Error en procesamiento:', googleError);
+      console.error('Error en procesamiento:', googleError);
       
       let errorMessage = `Error: ${googleError.message}`;
       
       if (googleError.message.includes('PERMISSION_DENIED')) {
-        errorMessage += `\n\n🔧 SOLUCIÓN: Comparte la hoja con: rayostrength-sheets@rayostrength-434a7.iam.gserviceaccount.com`;
+        errorMessage += `\n\nComparte la hoja con: rayostrength-sheets@rayostrength-434a7.iam.gserviceaccount.com`;
       } else if (googleError.message.includes('NOT_FOUND')) {
-        errorMessage += '\n\n🔧 SOLUCIÓN: Verifica que exista la pestaña "4 semanas"';
+        errorMessage += '\n\nVerifica que exista la pestaña "4 semanas"';
       }
       
       return res.status(500).json({ 
@@ -847,7 +859,7 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       await connection.rollback();
       connection.release();
     }
-    console.error('❌ Error general vinculando hoja:', error);
+    console.error('Error general vinculando hoja:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Error interno del servidor: ' + error.message 
@@ -862,8 +874,8 @@ function procesarRutinaColumnasFijas(rawData) {
 
   const ejercicios = [];
   
-  console.log('🔍 Procesando con columnas fijas...');
-  console.log('📊 Total de filas:', rawData.length);
+  console.log('Procesando con columnas fijas...');
+  console.log('Total de filas:', rawData.length);
 
   let startRow = 1;
   for (let i = 1; i < Math.min(10, rawData.length); i++) {
@@ -876,7 +888,7 @@ function procesarRutinaColumnasFijas(rawData) {
           !grupoMuscular.toLowerCase().includes('grupo') &&
           !nombreEjercicio.toLowerCase().includes('ejercicio')) {
         startRow = i;
-        console.log('✅ Datos empiezan en fila:', startRow + 1);
+        console.log('Datos empiezan en fila:', startRow + 1);
         break;
       }
     }
@@ -922,8 +934,8 @@ function procesarRutinaColumnasFijas(rawData) {
     }
   }
 
-  console.log(`🎯 Total de ejercicios procesados: ${ejercicios.length}`);
-  console.log(`🏷️ Grupos musculares encontrados:`, [...new Set(ejercicios.map(e => e.grupoMuscular))]);
+  console.log(`Total de ejercicios procesados: ${ejercicios.length}`);
+  console.log(`Grupos musculares encontrados:`, [...new Set(ejercicios.map(e => e.grupoMuscular))]);
 
   return {
     ejercicios,
@@ -979,13 +991,13 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
       if (hojas.length > 0) {
         const sheetId = hojas[0].id_hoja_google;
         
-        console.log('🔄 Leyendo directamente de Google Sheets para cliente:', idCliente);
+        console.log('Leyendo directamente de Google Sheets para cliente:', idCliente);
         
         try {
           const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
           const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
           
-          console.log('✅ Datos actualizados desde Google Sheets. Ejercicios:', rutinaProcesada.ejercicios.length);
+          console.log('Datos actualizados desde Google Sheets. Ejercicios:', rutinaProcesada.ejercicios.length);
 
           const datosRutinaJSON = JSON.stringify(rutinaProcesada);
           await pool.execute(
@@ -1007,7 +1019,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
           });
 
         } catch (googleError) {
-          console.error('❌ Error leyendo Google Sheets, usando cache:', googleError);
+          console.error('Error leyendo Google Sheets, usando cache:', googleError);
           
           const [cache] = await pool.execute(
             `SELECT datos_rutina FROM CacheRutinas 
@@ -1034,13 +1046,13 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
                 fuente: 'cache_fallback'
               });
             } catch (parseError) {
-              console.error('❌ Error con cache también:', parseError);
+              console.error('Error con cache también:', parseError);
             }
           }
         }
       }
 
-      console.log('🔄 Usando rutina general (fallback)');
+      console.log('Usando rutina general (fallback)');
       try {
         const data = await googleSheets.readSheet('Rayostrenght');
         const rutinaGeneral = transformSheetDataToRutinas(data);
@@ -1076,12 +1088,11 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
   }
 });
 
-// START SERVER
 const startServer = async () => {
   try {
     await createTables();
-    app.listen(PORT, () => {
-      console.log(`Servidor corriendo en http://localhost:${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Servidor corriendo en puerto ${PORT}`);
     });
   } catch (error) {
     console.error('Error iniciando servidor:', error);
