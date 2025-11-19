@@ -1,12 +1,6 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-console.log('🔧 Verificando conexión a:', {
-  host: dbConfig.host,
-  user: dbConfig.user,
-  database: dbConfig.database
-});
-
 const dbConfig = {
   host: process.env.DB_HOST || 'rayostrenght.clkkmwkg6o6s.us-east-2.rds.amazonaws.com',
   user: process.env.DB_USER || 'rayos',
@@ -15,11 +9,20 @@ const dbConfig = {
   port: process.env.DB_PORT || 3306
 };
 
+console.log('Configuracion DB:', {
+  host: dbConfig.host,
+  user: dbConfig.user,
+  database: dbConfig.database
+});
+
 const pool = mysql.createPool({
-  ...dbConfig,
+  host: dbConfig.host,
+  user: dbConfig.user,
+  password: dbConfig.password,
+  database: dbConfig.database,
+  port: dbConfig.port,
   acquireTimeout: 60000,
   timeout: 60000,
-  reconnect: true,
   connectionLimit: 10,
   queueLimit: 0,
   waitForConnections: true,
@@ -66,7 +69,6 @@ const createTables = async () => {
       ) ENGINE=InnoDB
     `);
     
-
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS Progreso (
         id_progreso INT AUTO_INCREMENT PRIMARY KEY,
@@ -102,7 +104,6 @@ const createTables = async () => {
       ) ENGINE=InnoDB
     `);
 
-
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS ProgresoRutinas (
         id_progreso_rutina INT AUTO_INCREMENT PRIMARY KEY,
@@ -137,7 +138,6 @@ const createTables = async () => {
         UNIQUE KEY unique_coach_usuario (id_coach, id_usuario)
       ) ENGINE=InnoDB
     `);
-
    
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS SesionesEntrenamiento (
@@ -160,11 +160,11 @@ const createTables = async () => {
       ) ENGINE=InnoDB
     `);
 
-    console.log('✅ Todas las tablas creadas/verificadas correctamente');
+    console.log('Todas las tablas creadas/verificadas correctamente');
     
     connection.release();
   } catch (error) {
-    console.error('❌ Error creando tablas:', error.message);
+    console.error('Error creando tablas:', error.message);
     throw error;
   }
 };
@@ -172,11 +172,11 @@ const createTables = async () => {
 const testConnection = async () => {
   try {
     const connection = await pool.getConnection();
-    console.log('✅ Conectado a la base de datos MySQL');
+    console.log('Conectado a la base de datos MySQL');
     connection.release();
     return true;
   } catch (error) {
-    console.error('❌ Error conectando a MySQL:', error.message);
+    console.error('Error conectando a MySQL:', error.message);
     return false;
   }
 };
