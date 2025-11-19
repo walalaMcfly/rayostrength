@@ -744,8 +744,8 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
     await connection.beginTransaction();
 
     try {
-      const health = await googleSheets.healthCheck();
-      console.log('Google Sheets health:', health);
+      //const health = await googleSheets.healthCheck();
+      //console.log('Google Sheets health:', health);
       
       if (!health.healthy) {
         await connection.rollback();
