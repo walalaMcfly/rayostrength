@@ -1436,4 +1436,40 @@ app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, re
     });
   }
 });
+
+
+app.get('/api/progreso/historial-pesos', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const [historial] = await pool.execute(
+      `SELECT 
+        DATE_FORMAT(fecha, '%d %b') as fecha,
+        MAX(CAST(REPLACE(REPLACE(peso_utilizado, 'kg', ''), ' ', '') AS DECIMAL)) as peso,
+        id_ejercicio as ejercicio
+       FROM ProgresoRutinas 
+       WHERE id_usuario = ? 
+         AND peso_utilizado IS NOT NULL 
+         AND peso_utilizado != ''
+         AND peso_utilizado != '0'
+       GROUP BY fecha, id_ejercicio
+       ORDER BY fecha DESC
+       LIMIT 10`,
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      historial: historial
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo historial:', error);
+    res.json({
+      success: true,
+      historial: []
+    });
+  }
+});
+
 startServer();

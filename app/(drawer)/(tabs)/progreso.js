@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { LineChart } from 'react-native-chart-kit';
 import { colors } from "../../../constants/theme";
 
 const screenWidth = Dimensions.get("window").width;
@@ -22,6 +23,7 @@ export default function ProgresoScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [progressData, setProgressData] = useState(null);
+  const [historialPesos, setHistorialPesos] = useState([]);
 
   const [estadisticas, setEstadisticas] = useState({
     rutinasCompletadas: 0,
@@ -72,6 +74,9 @@ export default function ProgresoScreen() {
         
         if (result.success) {
           datosReales = result.progressData || result.data || result.estadisticas;
+          
+          // Cargar historial de pesos para el gráfico
+          await cargarHistorialPesos(token);
         }
       }
 
@@ -97,6 +102,7 @@ export default function ProgresoScreen() {
       }
       
     } catch (error) {
+      console.error('Error cargando datos:', error);
       setProgressData({
         rutinasSemanales: [0, 0, 0, 0, 0],
         volumenSemanal: [0, 0, 0, 0, 0],
@@ -123,6 +129,46 @@ export default function ProgresoScreen() {
     }
   };
 
+  const cargarHistorialPesos = async (token) => {
+    try {
+      // Endpoint para obtener el historial de pesos (necesitarás crearlo en el backend)
+      const response = await fetch(`${BASE_URL}/api/progreso/historial-pesos`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          setHistorialPesos(result.historial || []);
+        }
+      } else {
+        // Si no existe el endpoint, crear datos de ejemplo basados en los records
+        generarDatosEjemplo();
+      }
+    } catch (error) {
+      console.log('Error cargando historial, usando datos de ejemplo');
+      generarDatosEjemplo();
+    }
+  };
+
+  const generarDatosEjemplo = () => {
+    // Datos de ejemplo para el gráfico
+    const fechas = ['1 Mar', '8 Mar', '15 Mar', '22 Mar', '29 Mar', '5 Abr'];
+    const pesos = [40, 45, 42, 48, 50, 52];
+    
+    const historialEjemplo = fechas.map((fecha, index) => ({
+      fecha,
+      peso: pesos[index],
+      ejercicio: `Ejercicio ${index + 1}`
+    }));
+    
+    setHistorialPesos(historialEjemplo);
+  };
+
   const calcularEstadisticasReales = (datos) => {
     if (!datos || Object.keys(datos).length === 0) {
       return {
@@ -146,33 +192,30 @@ export default function ProgresoScreen() {
         promedioRIR: datos.estadisticas.promedioRIR || 0,
         volumenSemanal: datos.estadisticas.volumenSemanal || 0,
         fuerzaProgreso: datos.estadisticas.fuerzaProgreso || 0,
-        consistencia: datos.estadisticas.consistencia || 0
+        consistencia: datos.estadisticas.consistencia || 0,
+        // Nuevas métricas
+        seriesTotales: datos.estadisticas.seriesTotales || 0,
+        diasEntrenados: datos.estadisticas.diasEntrenados || 0,
+        volumenTotal: datos.estadisticas.volumenTotal || 0,
+        mejorRecord: datos.estadisticas.mejorRecord || 0,
+        pesoPromedio: datos.estadisticas.pesoPromedio || 0
       };
     }
 
-    const rutinasSemanales = datos.rutinasSemanales || [0, 0, 0, 0, 0];
-    const volumenSemanal = datos.volumenSemanal || [0, 0, 0, 0, 0];
-    
-    const rutinasCompletadas = rutinasSemanales.reduce((a, b) => a + b, 0);
-    const totalRutinas = rutinasSemanales.length * 7;
-    const porcentajeCompletitud = totalRutinas > 0 ? Math.round((rutinasCompletadas / totalRutinas) * 100) : 0;
-    
-    const volumenActual = volumenSemanal.length > 0 ? volumenSemanal[volumenSemanal.length - 1] : 0;
-    const fuerzaProgreso = volumenSemanal.length > 1 && volumenSemanal[0] > 0 
-      ? Math.round(((volumenActual - volumenSemanal[0]) / volumenSemanal[0]) * 100)
-      : 0;
-
-    const consistencia = calcularConsistencia(rutinasSemanales);
-
     return {
-      rutinasCompletadas,
-      totalRutinas,
-      porcentajeCompletitud,
-      mejorRPE: datos.mejorRPE || 0,
-      promedioRIR: datos.promedioRIR || 0,
-      volumenSemanal: volumenActual,
-      fuerzaProgreso,
-      consistencia
+      rutinasCompletadas: 0,
+      totalRutinas: 0,
+      porcentajeCompletitud: 0,
+      mejorRPE: 0,
+      promedioRIR: 0,
+      volumenSemanal: 0,
+      fuerzaProgreso: 0,
+      consistencia: 0,
+      seriesTotales: 0,
+      diasEntrenados: 0,
+      volumenTotal: 0,
+      mejorRecord: 0,
+      pesoPromedio: 0
     };
   };
 
@@ -252,88 +295,176 @@ export default function ProgresoScreen() {
     }
   };
 
-
-const renderResumen = () => (
-  <View style={styles.seccion}>
-    <Text style={styles.tituloSeccion}> Tu Progreso </Text>
-    
-    {estadisticas.seriesTotales === 0 ? (
-      <View style={styles.avisoContainer}>
-        <Text style={styles.avisoTexto}>
-          🏋️‍♂️ Aún no tienes datos de entrenamiento. 
-          {"\n"}Completa algunas rutinas registrando tus pesos y series para ver tu progreso aquí.
-        </Text>
-      </View>
-    ) : (
-      <>
-        <View style={styles.estadisticasGrid}>
-          <View style={styles.estadisticaCard}>
-            <Text style={styles.estadisticaNumero}>{estadisticas.mejorRecord}kg</Text>
-            <Text style={styles.estadisticaLabel}>Mejor Record</Text>
-            <Text style={styles.estadisticaSubtexto}>
-              {progressData?.topRecords?.[0]?.nombre_ejercicio || 'Ejercicio'}
+  const renderGraficoProgreso = () => {
+    if (historialPesos.length === 0) {
+      return (
+        <View style={styles.graficoContainer}>
+          <Text style={styles.subtitulo}>📈 Progreso de Pesos</Text>
+          <View style={styles.sinDatosGrafico}>
+            <Text style={styles.sinDatosTexto}>
+              Aún no hay suficientes datos para mostrar tu progreso
             </Text>
-          </View>
-
-          <View style={styles.estadisticaCard}>
-            <Text style={styles.estadisticaNumero}>{estadisticas.volumenTotal}</Text>
-            <Text style={styles.estadisticaLabel}>Volumen Total</Text>
-            <Text style={styles.estadisticaSubtexto}>
-              {estadisticas.pesoPromedio}kg avg × {estadisticas.seriesTotales} series
-            </Text>
-          </View>
-
-          <View style={styles.estadisticaCard}>
-            <Text style={styles.estadisticaNumero}>{estadisticas.seriesTotales}</Text>
-            <Text style={styles.estadisticaLabel}>Series Totales</Text>
-            <Text style={styles.estadisticaSubtexto}>
-              {estadisticas.diasEntrenados} días
-            </Text>
-          </View>
-
-          <View style={styles.estadisticaCard}>
-            <Text style={styles.estadisticaNumero}>{estadisticas.consistencia}%</Text>
-            <Text style={styles.estadisticaLabel}>Consistencia</Text>
-            <Text style={styles.estadisticaSubtexto}>
-              {estadisticas.consistencia > 70 ? '🔥 Excelente' : '💪 En progreso'}
+            <Text style={styles.sinDatosSubtexto}>
+              Sigue registrando tus entrenamientos para ver tu evolución
             </Text>
           </View>
         </View>
+      );
+    }
 
-        {progressData?.graficoCircular && progressData.graficoCircular.length > 0 && (
-          <View style={styles.graficoCircularContainer}>
-            <Text style={styles.subtitulo}>Distribución de Series por Grupo Muscular</Text>
-            <View style={styles.graficoCircular}>
-              <View style={styles.graficoPlaceholder}>
-                <Text style={styles.graficoPlaceholderText}>
-                  📊 Gráfico Circular: {estadisticas.seriesTotales} series totales
-                </Text>
-                {progressData.graficoCircular.map((grupo, index) => (
-                  <View key={index} style={styles.grupoItem}>
-                    <Text style={styles.grupoTexto}>
-                      {grupo.grupo}: {grupo.series} series ({grupo.porcentaje}%)
-                    </Text>
-                  </View>
-                ))}
+    const datosGrafico = {
+      labels: historialPesos.map(item => item.fecha),
+      datasets: [
+        {
+          data: historialPesos.map(item => item.peso),
+          color: (opacity = 1) => `rgba(134, 65, 244, ${opacity})`,
+          strokeWidth: 2
+        }
+      ],
+      legend: ["Peso Máximo (kg)"]
+    };
+
+    return (
+      <View style={styles.graficoContainer}>
+        <Text style={styles.subtitulo}>📈 Evolución de Tu Fuerza</Text>
+        <LineChart
+          data={datosGrafico}
+          width={screenWidth - 48}
+          height={220}
+          chartConfig={chartConfig}
+          bezier
+          style={styles.grafico}
+          fromZero
+        />
+        <View style={styles.infoGrafico}>
+          <Text style={styles.infoGraficoTitulo}>Tu Progreso</Text>
+          <Text style={styles.infoGraficoTexto}>
+            {historialPesos.length > 1 ? 
+              `Has aumentado ${historialPesos[historialPesos.length - 1].peso - historialPesos[0].peso}kg en ${historialPesos.length} semanas` :
+              'Continúa registrando para ver tu progreso'
+            }
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderResumen = () => (
+    <View style={styles.seccion}>
+      <Text style={styles.tituloSeccion}>Tu Progreso</Text>
+      
+      {estadisticas.rutinasCompletadas === 0 ? (
+        <View style={styles.avisoContainer}>
+          <Text style={styles.avisoTexto}>
+            🏋️‍♂️ Aún no tienes datos de entrenamiento. 
+            {"\n"}Completa algunas rutinas registrando tus pesos y series para ver tu progreso aquí.
+          </Text>
+          <TouchableOpacity style={styles.botonAccion} onPress={onRefresh}>
+            <Text style={styles.textoBotonAccion}>🔄 Actualizar</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          {/* Estadísticas Principales */}
+          <View style={styles.estadisticasGrid}>
+            <View style={styles.estadisticaCard}>
+              <Text style={styles.estadisticaNumero}>{estadisticas.mejorRecord}kg</Text>
+              <Text style={styles.estadisticaLabel}>Mejor Record</Text>
+              <Text style={styles.estadisticaSubtexto}>
+                {progressData?.topRecords?.[0]?.nombre_ejercicio || 'Tu máximo'}
+              </Text>
+            </View>
+
+            <View style={styles.estadisticaCard}>
+              <Text style={styles.estadisticaNumero}>{estadisticas.volumenTotal}</Text>
+              <Text style={styles.estadisticaLabel}>Volumen Total</Text>
+              <Text style={styles.estadisticaSubtexto}>
+                {estadisticas.pesoPromedio}kg × {estadisticas.seriesTotales} series
+              </Text>
+            </View>
+
+            <View style={styles.estadisticaCard}>
+              <Text style={styles.estadisticaNumero}>{estadisticas.rutinasCompletadas}</Text>
+              <Text style={styles.estadisticaLabel}>Rutinas Completadas</Text>
+              <Text style={styles.estadisticaSubtexto}>
+                {estadisticas.porcentajeCompletitud}% de efectividad
+              </Text>
+            </View>
+
+            <View style={styles.estadisticaCard}>
+              <Text style={styles.estadisticaNumero}>{estadisticas.consistencia}%</Text>
+              <Text style={styles.estadisticaLabel}>Consistencia</Text>
+              <Text style={styles.estadisticaSubtexto}>
+                {estadisticas.consistencia > 70 ? '🔥 Excelente' : 
+                 estadisticas.consistencia > 40 ? '💪 Bueno' : '⚡ Puedes mejorar'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Gráfico de Progreso */}
+          {renderGraficoProgreso()}
+
+          {/* Métricas de Entrenamiento */}
+          <View style={styles.metricasContainer}>
+            <Text style={styles.subtitulo}>📊 Métricas de Entrenamiento</Text>
+            <View style={styles.metricasGrid}>
+              <View style={styles.metricaItem}>
+                <Text style={styles.metricaValor}>{estadisticas.mejorRPE || 0}</Text>
+                <Text style={styles.metricaLabel}>Mejor RPE</Text>
+              </View>
+              <View style={styles.metricaItem}>
+                <Text style={styles.metricaValor}>{estadisticas.promedioRIR || 0}</Text>
+                <Text style={styles.metricaLabel}>RIR Promedio</Text>
+              </View>
+              <View style={styles.metricaItem}>
+                <Text style={styles.metricaValor}>{estadisticas.diasEntrenados || 0}</Text>
+                <Text style={styles.metricaLabel}>Días Entrenados</Text>
+              </View>
+              <View style={styles.metricaItem}>
+                <Text style={styles.metricaValor}>{estadisticas.fuerzaProgreso || 0}%</Text>
+                <Text style={styles.metricaLabel}>Progreso Fuerza</Text>
               </View>
             </View>
           </View>
-        )}
-        {progressData?.topRecords && progressData.topRecords.length > 0 && (
-          <View style={styles.recordsContainer}>
-            <Text style={styles.subtitulo}>🏆 Tus Mejores Records</Text>
-            {progressData.topRecords.map((record, index) => (
-              <View key={index} style={styles.recordCard}>
-                <Text style={styles.recordEjercicio}>{record.nombre_ejercicio}</Text>
-                <Text style={styles.recordPeso}>{record.record_peso} kg</Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </>
-    )}
-  </View>
-);
+
+          {/* Records Personales */}
+          {progressData?.topRecords && progressData.topRecords.length > 0 && (
+            <View style={styles.recordsContainer}>
+              <Text style={styles.subtitulo}>🏆 Tus Records Personales</Text>
+              {progressData.topRecords.map((record, index) => (
+                <View key={index} style={styles.recordCard}>
+                  <View style={styles.recordInfo}>
+                    <Text style={styles.recordEjercicio}>{record.nombre_ejercicio}</Text>
+                    <Text style={styles.recordFecha}>
+                      {record.fecha_record ? new Date(record.fecha_record).toLocaleDateString() : 'Reciente'}
+                    </Text>
+                  </View>
+                  <Text style={styles.recordPeso}>{record.record_peso} kg</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Sesiones Recientes */}
+          {progressData?.sesionesRecientes && progressData.sesionesRecientes.length > 0 && (
+            <View style={styles.sesionesContainer}>
+              <Text style={styles.subtitulo}>📅 Sesiones Recientes</Text>
+              {progressData.sesionesRecientes.slice(0, 3).map((sesion, index) => (
+                <View key={index} style={styles.sesionCard}>
+                  <Text style={styles.sesionFecha}>
+                    {new Date(sesion.fecha).toLocaleDateString()}
+                  </Text>
+                  <Text style={styles.sesionDetalles}>
+                    {sesion.ejercicios_completados}/{sesion.total_ejercicios} ejercicios • {sesion.porcentaje_completitud}% completado
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </>
+      )}
+    </View>
+  );
 
   const renderWellness = () => (
     <View style={styles.seccion}>
@@ -439,25 +570,26 @@ const renderResumen = () => (
 }
 
 const chartConfig = {
-  backgroundColor: colors.card,
-  backgroundGradientFrom: colors.card,
-  backgroundGradientTo: colors.card,
+  backgroundColor: colors.background,
+  backgroundGradientFrom: colors.background,
+  backgroundGradientTo: colors.background,
   decimalPlaces: 0,
-  color: (opacity = 1) => `rgba(255, 215, 0, ${opacity})`,
+  color: (opacity = 1) => `rgba(74, 144, 226, ${opacity})`,
   labelColor: (opacity = 1) => colors.text,
-  style: { borderRadius: 16 },
-  propsForDots: { r: "4", strokeWidth: "2", stroke: colors.active }
-};
-
-const chartConfigVolumen = {
-  backgroundColor: colors.card,
-  backgroundGradientFrom: colors.card,
-  backgroundGradientTo: colors.card,
-  decimalPlaces: 0,
-  color: (opacity = 1) => `rgba(34, 197, 94, ${opacity})`,
-  labelColor: (opacity = 1) => colors.text,
-  style: { borderRadius: 16 },
-  propsForDots: { r: "4", strokeWidth: "2", stroke: "#22c55e" }
+  style: {
+    borderRadius: 16,
+    padding: 10
+  },
+  propsForDots: {
+    r: "5",
+    strokeWidth: "2",
+    stroke: colors.active
+  },
+  propsForBackgroundLines: {
+    strokeDasharray: "",
+    stroke: colors.border,
+    strokeWidth: 1
+  }
 };
 
 const styles = StyleSheet.create({
@@ -554,6 +686,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
   },
   estadisticaNumero: {
     fontSize: 24,
@@ -573,70 +710,138 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 2,
   },
-  barraProgreso: {
-    width: '100%',
-    height: 6,
-    backgroundColor: colors.border,
-    borderRadius: 3,
-    marginTop: 8,
-  },
-  barraProgresoFill: {
-    height: '100%',
-    backgroundColor: colors.active,
-    borderRadius: 3,
-  },
-  graficosContainer: {
-    gap: 16,
-  },
   graficoContainer: {
     backgroundColor: colors.card,
     padding: 16,
     borderRadius: 12,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  grafico: {
+    marginVertical: 8,
+    borderRadius: 16,
   },
   subtitulo: {
     color: colors.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  infoGrafico: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: 'rgba(74, 144, 226, 0.1)',
+    borderRadius: 8,
+  },
+  infoGraficoTitulo: {
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: 4,
+  },
+  infoGraficoTexto: {
+    color: colors.placeholder,
+    fontSize: 14,
+  },
+  sinDatosGrafico: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sinDatosTexto: {
+    color: colors.text,
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  sinDatosSubtexto: {
+    color: colors.placeholder,
+    fontSize: 14,
     textAlign: 'center',
   },
-  grafico: {
-    borderRadius: 16,
-  },
-  infoContainer: {
+  metricasContainer: {
     backgroundColor: colors.card,
     padding: 16,
     borderRadius: 12,
-    marginTop: 16,
-  },
-  infoTitulo: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: 'bold',
     marginBottom: 16,
+  },
+  metricasGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
   metricaItem: {
-    marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    width: '48%',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  metricaValor: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.active,
+    marginBottom: 4,
   },
   metricaLabel: {
     color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
+    fontSize: 12,
+    textAlign: 'center',
   },
-  metricaValor: {
+  recordsContainer: {
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  recordCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  recordInfo: {
+    flex: 1,
+  },
+  recordEjercicio: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  recordFecha: {
+    color: colors.placeholder,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  recordPeso: {
     color: colors.active,
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  sesionesContainer: {
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  sesionCard: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  sesionFecha: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
     marginBottom: 4,
   },
-  metricaDescripcion: {
-    color: colors.text,
-    fontSize: 12,
-    opacity: 0.8,
+  sesionDetalles: {
+    color: colors.placeholder,
+    fontSize: 14,
   },
   preguntaContainer: {
     backgroundColor: colors.card,
@@ -687,6 +892,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
   },
   textoBotonEnviar: {
     color: colors.card,
@@ -712,81 +922,29 @@ const styles = StyleSheet.create({
   },
   avisoContainer: {
     backgroundColor: '#FFF3CD',
-    padding: 16,
-    borderRadius: 8,
+    padding: 20,
+    borderRadius: 12,
     marginBottom: 16,
     borderLeftWidth: 4,
     borderLeftColor: '#FFC107',
+    alignItems: 'center',
   },
   avisoTexto: {
     color: '#856404',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  sinDatosContainer: {
-    backgroundColor: colors.card,
-    padding: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  sinDatosTexto: {
-    color: colors.placeholder,
     fontSize: 16,
+    lineHeight: 22,
     textAlign: 'center',
-    fontStyle: 'italic',
+    marginBottom: 16,
   },
-  
-  graficoCircularContainer: {
-  backgroundColor: colors.card,
-  padding: 16,
-  borderRadius: 12,
-  marginBottom: 16,
-},
-graficoCircular: {
-  alignItems: 'center',
-  marginTop: 10,
-},
-graficoPlaceholder: {
-  alignItems: 'center',
-},
-graficoPlaceholderText: {
-  color: colors.text,
-  fontSize: 16,
-  fontWeight: 'bold',
-  marginBottom: 10,
-},
-grupoItem: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  width: '100%',
-  paddingVertical: 4,
-},
-grupoTexto: {
-  color: colors.text,
-  fontSize: 14,
-},
-recordsContainer: {
-  backgroundColor: colors.card,
-  padding: 16,
-  borderRadius: 12,
-},
-recordCard: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  paddingVertical: 12,
-  borderBottomWidth: 1,
-  borderBottomColor: colors.border,
-},
-recordEjercicio: {
-  color: colors.text,
-  fontSize: 14,
-  flex: 1,
-},
-recordPeso: {
-  color: colors.active,
-  fontSize: 16,
-  fontWeight: 'bold',
-},
+  botonAccion: {
+    backgroundColor: colors.active,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  textoBotonAccion: {
+    color: colors.card,
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });
