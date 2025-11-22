@@ -1472,4 +1472,115 @@ app.get('/api/progreso/historial-pesos', authenticateToken, async (req, res) => 
   }
 });
 
+//Endpoint para crear reunion en google meet
+
+app.post('/api/meet/crear-sesion', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'coach') {
+      return res.status(403).json({
+        success: false,
+        message: 'Solo los coaches pueden crear sesiones'
+      });
+    }
+
+    const { idUsuario, titulo, descripcion, enlaceMeet, fechaSesion, duracion } = req.body;
+    const idCoach = req.user.coachId;
+
+    if (!idUsuario || !titulo || !enlaceMeet || !fechaSesion) {
+      return res.status(400).json({
+        success: false,
+        message: 'Faltan campos requeridos'
+      });
+    }
+
+    const [result] = await pool.execute(
+      `INSERT INTO SesionesMeet (id_coach, id_usuario, titulo, descripcion, enlace_meet, fecha_sesion, duracion_minutos)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [idCoach, idUsuario, titulo, descripcion, enlaceMeet, fechaSesion, duracion || 60]
+    );
+
+    res.json({
+      success: true,
+      message: 'Sesión de Google Meet creada correctamente',
+      idSesion: result.insertId
+    });
+
+  } catch (error) {
+    console.error('Error creando sesión:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+app.get('/api/meet/sesiones-usuario', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'user') {
+      return res.status(403).json({
+        success: false,
+        message: 'Solo los usuarios pueden ver sus sesiones'
+      });
+    }
+
+    const userId = req.user.userId;
+
+    const [sesiones] = await pool.execute(
+      `SELECT sm.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
+       FROM SesionesMeet sm
+       JOIN Coach c ON sm.id_coach = c.id_coach
+       WHERE sm.id_usuario = ? AND sm.estado = 'programada'
+       ORDER BY sm.fecha_sesion ASC`,
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      sesiones: sesiones
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo sesiones:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+app.get('/api/meet/sesiones-coach', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'coach') {
+      return res.status(403).json({
+        success: false,
+        message: 'Solo los coaches pueden ver sus sesiones'
+      });
+    }
+
+    const coachId = req.user.coachId;
+
+    const [sesiones] = await pool.execute(
+      `SELECT sm.*, u.nombre as usuario_nombre, u.apellido as usuario_apellido 
+       FROM SesionesMeet sm
+       JOIN Usuario u ON sm.id_usuario = u.id_usuario
+       WHERE sm.id_coach = ? AND sm.estado = 'programada'
+       ORDER BY sm.fecha_sesion ASC`,
+      [coachId]
+    );
+
+    res.json({
+      success: true,
+      sesiones: sesiones
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo sesiones:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+
 startServer();

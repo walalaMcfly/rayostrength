@@ -13,6 +13,12 @@ export default function ClientsLayout() {
     >
       <Stack.Screen name="index" options={{ title: 'Gestión de Clientes' }} />
       <Stack.Screen name="[id]" options={{ title: 'Detalle Cliente' }} />
+       <Stack.Screen 
+        name="crear-sesion-meet" 
+        options={{ title: 'Agendar Sesión Meet' }} 
+      />
+      
+      
     </Stack>
   );
 }

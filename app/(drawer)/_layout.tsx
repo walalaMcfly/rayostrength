@@ -65,6 +65,18 @@ export default function DrawerLayout() {
           ),
         }}
       />
+
+      <Drawer.Screen
+        name="meet"
+        options={{
+          drawerLabel: 'Videollamadas',
+          title: 'Sesiones con Coach',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="videocam-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      
       <Drawer.Screen
         name="notificaciones"
         options={{

@@ -370,6 +370,13 @@ export default function ClientDetail() {
           style={[styles.tab, activeTab === 'wellness' && styles.activeTab]}
           onPress={() => setActiveTab('wellness')}
         >
+
+        <TouchableOpacity 
+            style={styles.botonMeet}
+            onPress={() => navigation.navigate('CrearSesionMeet', { cliente: clienteData })}
+            ><Text style={styles.botonMeetTexto}>Agendar Google Meet</Text>
+            </TouchableOpacity>
+
           <Text style={[styles.tabText, activeTab === 'wellness' && styles.activeTabText]}>
             🧘 Wellness
           </Text>
@@ -975,4 +982,17 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 10,
   },
+  botonMeet: {
+  backgroundColor: colors.active,
+  padding: 15,
+  borderRadius: 8,
+  alignItems: 'center',
+  margin: 16,
+  marginTop: 8,
+},
+botonMeetTexto: {
+  color: colors.card,
+  fontSize: 16,
+  fontWeight: 'bold',
+},
 });
