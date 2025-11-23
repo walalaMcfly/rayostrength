@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
 import { Alert } from 'react-native';
@@ -13,13 +14,29 @@ export default function DrawerLayout() {
       [
         {
           text: "Cancelar",
-          style: "cancel"
+          style: "cancel",
         },
-        { 
-          text: "Cerrar Sesión", 
-          onPress: () => router.replace('/'),
-          style: "destructive"
-        }
+        {
+          text: "Cerrar Sesión",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // 🔥 Elimina los datos guardados del usuario
+              await AsyncStorage.multiRemove([
+                'userToken',
+                'userData',
+                'userRole',
+              ]);
+
+              console.log("🧹 Sesión cerrada");
+
+              // 🔥 Redirige al login
+              router.replace('/');
+            } catch (error) {
+              console.log("❌ Error al cerrar sesión:", error);
+            }
+          },
+        },
       ]
     );
   };
@@ -42,7 +59,8 @@ export default function DrawerLayout() {
         },
       }}
     >
-      {/* PANTALLA PRINCIPAL CON TABS */}
+
+      {/* TABS PRINCIPALES */}
       <Drawer.Screen
         name="(tabs)"
         options={{
@@ -54,7 +72,7 @@ export default function DrawerLayout() {
         }}
       />
 
-      {/* OPCIONES DEL MENÚ */}
+      {/* PERFIL */}
       <Drawer.Screen
         name="perfil"
         options={{
@@ -66,6 +84,7 @@ export default function DrawerLayout() {
         }}
       />
 
+      {/* VIDEO LLAMADAS */}
       <Drawer.Screen
         name="MeetScreen"
         options={{
@@ -76,7 +95,8 @@ export default function DrawerLayout() {
           ),
         }}
       />
-      
+
+      {/* NOTIFICACIONES */}
       <Drawer.Screen
         name="notificaciones"
         options={{
@@ -87,6 +107,8 @@ export default function DrawerLayout() {
           ),
         }}
       />
+
+      {/* TEMA */}
       <Drawer.Screen
         name="tema"
         options={{
@@ -98,7 +120,7 @@ export default function DrawerLayout() {
         }}
       />
 
-      {/* CERRAR SESIÓN (SOLO EN DRAWER) */}
+      {/* CERRAR SESIÓN */}
       <Drawer.Screen
         name="cerrar-sesion"
         options={{
@@ -110,11 +132,12 @@ export default function DrawerLayout() {
         }}
         listeners={{
           drawerItemPress: (e) => {
-            e.preventDefault();
-            handleCerrarSesion();
+            e.preventDefault(); // ❗ No navegar a una pantalla
+            handleCerrarSesion(); // 🔥 Solo ejecutar logout
           },
         }}
       />
+
     </Drawer>
   );
 }
