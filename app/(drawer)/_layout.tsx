@@ -1,48 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
-import { Alert } from 'react-native';
 
 export default function DrawerLayout() {
-  const router = useRouter();
-
-  const handleCerrarSesion = () => {
-    Alert.alert(
-      "Cerrar Sesión",
-      "¿Estás seguro de que quieres cerrar sesión?",
-      [
-        {
-          text: "Cancelar",
-          style: "cancel"
-        },
-        { 
-          text: "Cerrar Sesión", 
-          onPress: () => router.replace('/'),
-          style: "destructive"
-        }
-      ]
-    );
-  };
-
   return (
     <Drawer
       screenOptions={{
-        headerStyle: {
-          backgroundColor: '#D1B000',
-        },
+        headerStyle: { backgroundColor: '#D1B000' },
         headerTintColor: '#fff',
         drawerActiveTintColor: '#D1B000',
         drawerInactiveTintColor: '#333',
-        drawerStyle: {
-          backgroundColor: '#fff',
-        },
-        drawerLabelStyle: {
-          fontSize: 16,
-          fontWeight: '600',
-        },
+        drawerStyle: { backgroundColor: '#fff' },
+        drawerLabelStyle: { fontSize: 16, fontWeight: '600' },
       }}
     >
-      {/* PANTALLA PRINCIPAL CON TABS */}
+
+      {/* TABS PRINCIPALES */}
       <Drawer.Screen
         name="(tabs)"
         options={{
@@ -54,7 +26,7 @@ export default function DrawerLayout() {
         }}
       />
 
-      {/* OPCIONES DEL MENÚ */}
+      {/* PERFIL */}
       <Drawer.Screen
         name="perfil"
         options={{
@@ -66,6 +38,7 @@ export default function DrawerLayout() {
         }}
       />
 
+      {/* VIDEO LLAMADAS */}
       <Drawer.Screen
         name="MeetScreen"
         options={{
@@ -76,7 +49,8 @@ export default function DrawerLayout() {
           ),
         }}
       />
-      
+
+      {/* NOTIFICACIONES */}
       <Drawer.Screen
         name="notificaciones"
         options={{
@@ -87,6 +61,8 @@ export default function DrawerLayout() {
           ),
         }}
       />
+
+      {/* TEMA */}
       <Drawer.Screen
         name="tema"
         options={{
@@ -98,9 +74,9 @@ export default function DrawerLayout() {
         }}
       />
 
-      {/* CERRAR SESIÓN (SOLO EN DRAWER) */}
+      {/* CERRAR SESIÓN - AHORA SÍ ABRE UNA PANTALLA REAL */}
       <Drawer.Screen
-        name="cerrar-sesion"
+        name="cerrarsesion"
         options={{
           drawerLabel: 'Cerrar Sesión',
           title: 'Cerrar Sesión',
@@ -108,13 +84,8 @@ export default function DrawerLayout() {
             <Ionicons name="log-out-outline" size={size} color={color} />
           ),
         }}
-        listeners={{
-          drawerItemPress: (e) => {
-            e.preventDefault();
-            handleCerrarSesion();
-          },
-        }}
       />
+
     </Drawer>
   );
 }
