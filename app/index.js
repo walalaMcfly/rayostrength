@@ -29,7 +29,39 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
-  
+
+
+// Función de login modificada temporalmente
+const login = async (email, password) => {
+  try {
+    let endpoint = '/api/auth/login';
+    if (email === 'carlos.coach@rayostrength.com') {
+      endpoint = '/api/auth/login-coach-temp';
+    }
+
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: email,
+        contraseña: password
+      })
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error en login');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error en login:', error);
+    throw error;
+  }
+};
 
 const handleLogin = async () => {
   try {

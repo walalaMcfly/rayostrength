@@ -34,6 +34,100 @@ app.use(cors({
 
 app.use(express.json());
 
+//temporal
+
+app.get('/api/debug/check-coach', async (req, res) => {
+  try {
+    const email = 'carlos.coach@rayostrength.com';
+    
+    const [coaches] = await pool.execute(
+      'SELECT id_coach, email, contraseña, LENGTH(contraseña) as pass_length FROM Coach WHERE email = ?',
+      [email]
+    );
+    
+    if (coaches.length === 0) {
+      return res.json({
+        success: false,
+        message: 'Coach no encontrado'
+      });
+    }
+    
+    const coach = coaches[0];
+    const isBcryptHash = coach.contraseña && coach.contraseña.startsWith('$2');
+    
+    res.json({
+      success: true,
+      coach: {
+        id: coach.id_coach,
+        email: coach.email,
+        password_length: coach.pass_length,
+        is_bcrypt_hash: isBcryptHash,
+        hash_prefix: coach.contraseña ? coach.contraseña.substring(0, 20) + '...' : 'null'
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error en debug coach:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error del servidor'
+    });
+  }
+});
+
+app.post('/api/debug/reset-coach-password', async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+    
+    if (!email || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email y nueva contraseña requeridos'
+      });
+    }
+    
+    console.log('Reseteando contraseña para:', email);
+    
+    const [coaches] = await pool.execute(
+      'SELECT * FROM Coach WHERE email = ?',
+      [email]
+    );
+    
+    if (coaches.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Coach no encontrado'
+      });
+    }
+    
+    const coach = coaches[0];
+    console.log('Hash actual:', coach.contraseña);
+    
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    console.log('Nuevo hash generado:', hashedPassword);
+    
+    await pool.execute(
+      'UPDATE Coach SET contraseña = ? WHERE email = ?',
+      [hashedPassword, email]
+    );
+    
+    res.json({
+      success: true,
+      message: 'Contraseña reseteada exitosamente',
+      email: email
+    });
+    
+  } catch (error) {
+    console.error('Error reseteando contraseña:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+//temporal
+
 app.get('/', (req, res) => {
   res.json({ 
     status: 'Backend Rayostrength funcionando',
