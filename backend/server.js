@@ -1120,7 +1120,6 @@ const startServer = async () => {
   }
 };
 
-
 //Endpoint de progreso
 app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
   try {
@@ -1582,5 +1581,75 @@ app.get('/api/meet/sesiones-coach', authenticateToken, async (req, res) => {
   }
 });
 
+
+//Debug temporal 
+
+app.post('/api/auth/login-coach-temp', async (req, res) => {
+  try {
+    const { email, contraseña } = req.body;
+
+    if (!email || !contraseña) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email y contraseña requeridos'
+      });
+    }
+
+    if (email !== 'carlos.coach@rayostrength.com' || contraseña !== 'Coach123') {
+      return res.status(401).json({
+        success: false,
+        message: 'Credenciales inválidas'
+      });
+    }
+
+    const [coaches] = await pool.execute(
+      'SELECT * FROM Coach WHERE email = ?',
+      [email]
+    );
+
+    if (coaches.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Coach no encontrado'
+      });
+    }
+
+    const coach = coaches[0];
+
+    const token = jwt.sign(
+      { 
+        coachId: coach.id_coach,
+        email: coach.email, 
+        role: 'coach' 
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      success: true,
+      message: 'Login temporal exitoso',
+      token,
+      user: {
+        id_coach: coach.id_coach,
+        nombre: coach.nombre,
+        apellido: coach.apellido,
+        email: coach.email,
+        fecha_nacimiento: coach.fecha_nacimiento,
+        sexo: coach.sexo,
+        especialidad: coach.especialidad,
+        experiencia: coach.experiencia,
+        role: 'coach'
+      }
+    });
+
+  } catch (error) {
+    console.error('Error en login temporal:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
 
 startServer();
