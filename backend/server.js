@@ -1526,11 +1526,11 @@ app.get('/api/meet/sesiones-usuario', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
 
     const [sesiones] = await pool.execute(
-      `SELECT sm.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
-       FROM SesionesMeet sm
-       JOIN Coach c ON sm.id_coach = c.id_coach
-       WHERE sm.id_usuario = ? AND sm.estado = 'programada'
-       ORDER BY sm.fecha_sesion ASC`,
+      `SELECT SesionesMeet.*, Coach.nombre as coach_nombre, Coach.apellido as coach_apellido 
+       FROM SesionesMeet 
+       JOIN Coach ON SesionesMeet.id_coach = Coach.id_coach
+       WHERE SesionesMeet.id_usuario = ? AND SesionesMeet.estado = 'programada'
+       ORDER BY SesionesMeet.fecha_sesion ASC`,
       [userId]
     );
 

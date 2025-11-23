@@ -10,7 +10,17 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import { colors } from '../../constants/theme';
+
+const colors = {
+  primary: '#3B82F6',
+  background: '#F3F4F6',
+  text: '#1F2937',
+  white: '#FFFFFF',
+  gray: '#6B7280',
+  success: '#10B981',
+  warning: '#F59E0B',
+  danger: '#EF4444',
+};
 
 const BASE_URL = 'https://rayostrength-production.up.railway.app';
 
