@@ -1,62 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
-import { Alert } from 'react-native';
 
 export default function DrawerLayout() {
-  const router = useRouter();
-
-  const handleCerrarSesion = () => {
-    Alert.alert(
-      "Cerrar Sesión",
-      "¿Estás seguro de que quieres cerrar sesión?",
-      [
-        {
-          text: "Cancelar",
-          style: "cancel",
-        },
-        {
-          text: "Cerrar Sesión",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              // 🔥 Elimina los datos guardados del usuario
-              await AsyncStorage.multiRemove([
-                'userToken',
-                'userData',
-                'userRole',
-              ]);
-
-              console.log("🧹 Sesión cerrada");
-
-              // 🔥 Redirige al login
-              router.replace('/');
-            } catch (error) {
-              console.log("❌ Error al cerrar sesión:", error);
-            }
-          },
-        },
-      ]
-    );
-  };
-
   return (
     <Drawer
       screenOptions={{
-        headerStyle: {
-          backgroundColor: '#D1B000',
-        },
+        headerStyle: { backgroundColor: '#D1B000' },
         headerTintColor: '#fff',
         drawerActiveTintColor: '#D1B000',
         drawerInactiveTintColor: '#333',
-        drawerStyle: {
-          backgroundColor: '#fff',
-        },
-        drawerLabelStyle: {
-          fontSize: 16,
-          fontWeight: '600',
-        },
+        drawerStyle: { backgroundColor: '#fff' },
+        drawerLabelStyle: { fontSize: 16, fontWeight: '600' },
       }}
     >
 
@@ -120,21 +74,15 @@ export default function DrawerLayout() {
         }}
       />
 
-      {/* CERRAR SESIÓN */}
+      {/* CERRAR SESIÓN - AHORA SÍ ABRE UNA PANTALLA REAL */}
       <Drawer.Screen
-        name="cerrar-sesion"
+        name="cerrarsesion"
         options={{
           drawerLabel: 'Cerrar Sesión',
           title: 'Cerrar Sesión',
           drawerIcon: ({ color, size }) => (
             <Ionicons name="log-out-outline" size={size} color={color} />
           ),
-        }}
-        listeners={{
-          drawerItemPress: (e) => {
-            e.preventDefault(); // ❗ No navegar a una pantalla
-            handleCerrarSesion(); // 🔥 Solo ejecutar logout
-          },
         }}
       />
 
