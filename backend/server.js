@@ -126,8 +126,6 @@ app.post('/api/debug/reset-coach-password', async (req, res) => {
   }
 });
 
-//temporal
-
 app.get('/', (req, res) => {
   res.json({ 
     status: 'Backend Rayostrength funcionando',
@@ -260,20 +258,68 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
+    console.log('=== INICIO DEBUG LOGIN ===');
+    console.log('Email recibido:', email);
+    console.log('Contraseña recibida (longitud):', contraseña.length);
+
     let user = null;
     let role = 'user';
 
-    console.log('Intentando login para:', email);
-
+    // Buscar como coach
     const [coaches] = await pool.execute(
       'SELECT * FROM Coach WHERE email = ?',
       [email]
     );
 
     if (coaches.length > 0) {
-      console.log('Coach encontrado:', coaches[0].email);
+      console.log('✅ Coach encontrado en BD');
       user = coaches[0];
       role = 'coach';
+      
+     
+      console.log(' Hash en BD:', user.contraseña);
+      console.log(' Longitud hash BD:', user.contraseña?.length);
+      console.log(' ¿Hash comienza con $2?:', user.contraseña?.startsWith('$2'));
+      console.log(' Prefix hash:', user.contraseña?.substring(0, 10));
+      
+      if (!user.contraseña || !user.contraseña.startsWith('$2')) {
+        console.log('Hash no es bcrypt válido');
+        return res.status(401).json({
+          success: false,
+          message: 'Error de autenticación. Contacta al administrador.'
+        });
+      }
+
+      console.log('🔄 Iniciando comparación bcrypt...');l
+      const validPassword = await bcrypt.compare(contraseña, user.contraseña);
+      console.log('🔍 Resultado bcrypt.compare:', validPassword);
+      
+      if (!validPassword) {
+        console.log('🔄 Testeando funcionalidad de bcrypt...');
+        const testPassword = 'Coach123';
+        const testHash = await bcrypt.hash(testPassword, 12);
+        const testCompare = await bcrypt.compare(testPassword, testHash);
+        console.log('🔍 Test bcrypt (debería ser true):', testCompare);
+        const testCompare2 = await bcrypt.compare('Coach123', user.contraseña);
+        console.log('🔍 Comparación con "Coach123":', testCompare2);
+        console.log('🔍 Contraseña recibida (caracteres):');
+        console.log('  - Original:', contraseña);
+        console.log('  - Trimmed:', contraseña.trim());
+        console.log('  - Longitud trimmed:', contraseña.trim().length);
+        
+        return res.status(401).json({
+          success: false,
+          message: 'Email o contraseña incorrectos',
+          debug: {
+            bcrypt_compare: validPassword,
+            bcrypt_test: testCompare,
+            compare_with_coach123: testCompare2
+          }
+        });
+      }
+      
+      console.log(' Contraseña válida - Login exitoso');
+      
     } else {
       const [users] = await pool.execute(
         'SELECT * FROM Usuario WHERE email = ?',
@@ -281,31 +327,25 @@ app.post('/api/auth/login', async (req, res) => {
       );
 
       if (users.length > 0) {
-        console.log('Usuario encontrado:', users[0].email);
         user = users[0];
         role = 'user';
+        const validPassword = await bcrypt.compare(contraseña, user.contraseña);
+        if (!validPassword) {
+          return res.status(401).json({
+            success: false,
+            message: 'Email o contraseña incorrectos'
+          });
+        }
       }
     }
 
     if (!user) {
-      console.log('Usuario no encontrado:', email);
+      console.log(' Usuario no encontrado');
       return res.status(401).json({
         success: false,
         message: 'Email o contraseña incorrectos'
       });
     }
-
-    const validPassword = await bcrypt.compare(contraseña, user.contraseña);
-    if (!validPassword) {
-      console.log('Contraseña incorrecta para:', email);
-      return res.status(401).json({
-        success: false,
-        message: 'Email o contraseña incorrectos'
-      });
-    }
-
-    console.log('Contraseña válida para:', email);
-
     let tokenPayload;
     if (role === 'user') {
       tokenPayload = { 
@@ -321,13 +361,14 @@ app.post('/api/auth/login', async (req, res) => {
       };
     }
 
-    console.log('Token payload creado:', tokenPayload);
-
     const token = jwt.sign(
       tokenPayload,
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
+
+    console.log('✅ LOGIN EXITOSO - Rol:', role);
+    console.log('=== FIN DEBUG LOGIN ===');
 
     if (role === 'user') {
       res.json({
@@ -366,10 +407,10 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error en login:', error);
+    console.error(' ERROR CRÍTICO EN LOGIN:', error);
     res.status(500).json({
       success: false,
-      message: 'Error interno del servidor'
+      message: 'Error interno del servidor: ' + error.message
     });
   }
 });
