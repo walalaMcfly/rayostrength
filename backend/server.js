@@ -1856,4 +1856,35 @@ app.post('/api/auth/login-coach-temp', async (req, res) => {
   }
 });
 
+//temporal
+app.get('/api/debug/hojas-cliente/:idCliente', async (req, res) => {
+  try {
+    const { idCliente } = req.params;
+    
+    const [hojas] = await pool.execute(
+      `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
+       FROM HojasClientes hc
+       JOIN Coach c ON hc.id_coach = c.id_coach
+       WHERE hc.id_cliente = ?`,
+      [idCliente]
+    );
+
+    const [cache] = await pool.execute(
+      `SELECT * FROM CacheRutinas WHERE id_cliente = ?`,
+      [idCliente]
+    );
+
+    res.json({
+      hojas: hojas,
+      cache: cache,
+      totalHojas: hojas.length,
+      totalCache: cache.length
+    });
+
+  } catch (error) {
+    console.error('Error en debug:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 startServer();
