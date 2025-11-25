@@ -140,6 +140,19 @@ export default function CoachDashboard() {
         </TouchableOpacity>
       </View>
 
+    <TouchableOpacity 
+  style={styles.sesionesButton}
+  onPress={() => router.push('/(coach)/sesiones-coach')}
+>
+  <View style={styles.sesionesButtonContent}>
+    <Text style={styles.sesionesButtonIcon}>📅</Text>
+    <View style={styles.sesionesButtonTextContainer}>
+      <Text style={styles.sesionesButtonTitle}>Mis Sesiones de meet</Text>
+    </View>
+    <Text style={styles.sesionesButtonArrow}>→</Text>
+  </View>
+</TouchableOpacity>
+
     </ScrollView>
   );
 }
@@ -271,4 +284,45 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
+
+  sesionesButton: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 12,
+  padding: 16,
+  marginBottom: 16,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 4,
+  elevation: 3,
+  borderLeftWidth: 4,
+  borderLeftColor: '#3B82F6',
+},
+sesionesButtonContent: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+},
+sesionesButtonIcon: {
+  fontSize: 24,
+  marginRight: 12,
+},
+sesionesButtonTextContainer: {
+  flex: 1,
+},
+sesionesButtonTitle: {
+  fontSize: 16,
+  fontWeight: 'bold',
+  color: '#1F2937',
+  marginBottom: 2,
+},
+sesionesButtonSubtitle: {
+  fontSize: 12,
+  color: '#6B7280',
+},
+sesionesButtonArrow: {
+  fontSize: 18,
+  color: '#3B82F6',
+  fontWeight: 'bold',
+},
 });

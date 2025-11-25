@@ -70,6 +70,13 @@ export default function CoachLayout() {
           presentation: 'modal' 
         }} 
       />
+      <Stack.Screen 
+        name="sesiones-coach" 
+        options={{ 
+          title: 'Mis Sesiones',
+          headerShown: true
+  }} 
+/>
     </Stack>
   );
 }
