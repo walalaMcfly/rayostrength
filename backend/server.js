@@ -967,18 +967,28 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       });
 
       console.log('Guardando en HojasClientes...');
-      const [result] = await connection.execute(
-        `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja) 
-         VALUES (?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE 
-         id_hoja_google = VALUES(id_hoja_google),
-         nombre_hoja = VALUES(nombre_hoja),
-         activa = TRUE,
-         ultima_sincronizacion = NOW()`,
-        [safeIdCliente, safeIdCoach, safeSheetId, safeNombreHoja]
-      );
+      const [existing] = await connection.execute(
+      'SELECT id_hoja FROM HojasClientes WHERE id_cliente = ?',
+      [safeIdCliente]
+    );
 
-      console.log('Guardado en HojasClientes, resultado:', result);
+      let result;
+      if (existing.length > 0) {
+        [result] = await connection.execute(
+          `UPDATE HojasClientes 
+          SET id_hoja_google = ?, nombre_hoja = ?, activa = TRUE, ultima_sincronizacion = NOW(), id_coach = ?
+          WHERE id_cliente = ?`,
+          [safeSheetId, safeNombreHoja, safeIdCoach, safeIdCliente]
+        );
+        console.log('UPDATE HojasClientes - affectedRows:', result.affectedRows);
+      } else {
+        [result] = await connection.execute(
+          `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja, activa, ultima_sincronizacion) 
+          VALUES (?, ?, ?, ?, TRUE, NOW())`,
+          [safeIdCliente, safeIdCoach, safeSheetId, safeNombreHoja]
+        );
+        console.log('INSERT HojasClientes - affectedRows:', result.affectedRows, 'insertId:', result.insertId);
+      }
 
       const datosRutinaJSON = JSON.stringify(rutinaProcesada);
       console.log('Guardando en CacheRutinas...');
@@ -1212,34 +1222,36 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
 
         } catch (googleError) {
           const [cache] = await pool.execute(
-            `SELECT datos_rutina FROM CacheRutinas 
-             WHERE id_cliente = ? 
-             ORDER BY fecha_actualizacion DESC LIMIT 1`,
-            [idCliente]
-          );
+          `SELECT datos_rutina FROM CacheRutinas 
+          WHERE id_cliente = ? 
+          ORDER BY fecha_actualizacion DESC LIMIT 1`,
+          [idCliente]
+        );
 
-          if (cache.length > 0) {
-            try {
-              let rutinaData;
-              if (typeof cache[0].datos_rutina === 'string') {
-                rutinaData = JSON.parse(cache[0].datos_rutina);
-              } else {
-                rutinaData = cache[0].datos_rutina;
-              }
-              
-              return res.json({
-                success: true,
-                personalizada: true,
-                coach: `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}`,
-                hojaVinculada: true,
-                ultimaSincronizacion: hojas[0].ultima_sincronizacion,
-                ejercicios: rutinaData.ejercicios,
-                metadata: rutinaData.metadata
-              });
-            } catch (parseError) {
-              console.error('Error parseando cache:', parseError);
+         if (cache.length > 0) {
+          try {
+            let rutinaData;
+            if (typeof cache[0].datos_rutina === 'string') {
+              rutinaData = JSON.parse(cache[0].datos_rutina);
+            } else {
+              rutinaData = cache[0].datos_rutina;
             }
+            
+          
+            return res.json({
+              success: true,
+              personalizada: true,  
+              hojaVinculada: hojas.length > 0,  
+              coach: hojas.length > 0 ? `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}` : 'Coach',
+              ultimaSincronizacion: cache[0].fecha_actualizacion,
+              ejercicios: rutinaData.ejercicios,
+              metadata: rutinaData.metadata,
+              message: hojas.length > 0 ? 'Rutina cargada desde Google Sheets' : 'Rutina cargada desde cache'
+            });
+          } catch (parseError) {
+            console.error('Error parseando cache:', parseError);
           }
+        }
           
           return res.status(500).json({
             success: false,
@@ -1937,6 +1949,34 @@ app.get('/api/debug/hoja-cruda/:idCliente', authenticateToken, async (req, res) 
 
   } catch (error) {
     console.error('Error en debug hoja cruda:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+//temporal para forzar vinculacion 
+app.post('/api/debug/forzar-vinculacion', async (req, res) => {
+  try {
+    const { idCliente, idCoach, sheetId } = req.body;
+    
+    const [result] = await pool.execute(
+      `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja, activa, ultima_sincronizacion) 
+       VALUES (?, ?, ?, 'Hoja_Cliente', TRUE, NOW())
+       ON DUPLICATE KEY UPDATE 
+       id_hoja_google = VALUES(id_hoja_google),
+       activa = TRUE,
+       ultima_sincronizacion = NOW()`,
+      [idCliente, idCoach, sheetId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Vinculacion forzada',
+      affectedRows: result.affectedRows,
+      insertId: result.insertId
+    });
+
+  } catch (error) {
+    console.error('Error forzando vinculacion:', error);
     res.status(500).json({ error: error.message });
   }
 });
