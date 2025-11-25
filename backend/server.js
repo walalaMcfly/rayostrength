@@ -587,6 +587,69 @@ function transformSheetDataToRutinas(sheetData) {
   });
 }
 
+app.post('/api/rutinas/sincronizar/:idCliente', authenticateToken, async (req, res) => {
+  try {
+    const { idCliente } = req.params;
+
+    if (req.user.role !== 'user' || req.user.userId != idCliente) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para sincronizar esta rutina'
+      });
+    }
+
+    const [hojas] = await pool.execute(
+      `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
+       FROM HojasClientes hc
+       JOIN Coach c ON hc.id_coach = c.id_coach
+       WHERE hc.id_cliente = ? AND hc.activa = TRUE`,
+      [idCliente]
+    );
+
+    if (hojas.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No hay hoja vinculada para sincronizar',
+        sincronizado: false
+      });
+    }
+
+    const sheetId = hojas[0].id_hoja_google;
+    const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
+    const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
+
+    const datosRutinaJSON = JSON.stringify(rutinaProcesada);
+    await pool.execute(
+      `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
+       VALUES (?, ?) 
+       ON DUPLICATE KEY UPDATE 
+       datos_rutina = VALUES(datos_rutina), 
+       fecha_actualizacion = NOW()`,
+      [idCliente, datosRutinaJSON]
+    );
+
+    await pool.execute(
+      'UPDATE HojasClientes SET ultima_sincronizacion = NOW() WHERE id_cliente = ?',
+      [idCliente]
+    );
+
+    res.json({
+      success: true,
+      message: 'Rutina sincronizada correctamente',
+      sincronizado: true,
+      ejerciciosActualizados: rutinaProcesada.ejercicios.length,
+      fechaSincronizacion: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Error sincronizando rutina:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al sincronizar la rutina: ' + error.message
+    });
+  }
+});
+
 /*app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
   try {
     const { semana } = req.params;
