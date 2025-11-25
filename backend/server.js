@@ -34,8 +34,6 @@ app.use(cors({
 
 app.use(express.json());
 
-//temporal
-
 app.get('/api/debug/check-coach', async (req, res) => {
   try {
     const email = 'carlos.coach@rayostrength.com';
@@ -278,7 +276,6 @@ app.post('/api/auth/login', async (req, res) => {
       console.log('Hash en BD:', user.contraseña.substring(0, 20) + '...');
       console.log('Longitud hash:', user.contraseña.length);
 
-      // COMPARACIÓN BCRYPT SIMPLE Y SEGURA
       console.log('Comparando contraseña...');
       const validPassword = await bcrypt.compare(contraseña, user.contraseña);
       console.log('Resultado comparación:', validPassword);
@@ -320,7 +317,6 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
-    // GENERAR TOKEN
     let tokenPayload;
     if (role === 'user') {
       tokenPayload = { 
@@ -650,26 +646,6 @@ app.post('/api/rutinas/sincronizar/:idCliente', authenticateToken, async (req, r
   }
 });
 
-/*app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
-  try {
-    const { semana } = req.params;
-    const data = await googleSheets.readSheet(semana);
-    const rutinas = transformSheetDataToRutinas(data);
-    
-    res.json({
-      success: true,
-      rutinas: rutinas
-    });
-    
-  } catch (error) {
-    console.error('Error obteniendo rutinas:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener las rutinas'
-    });
-  }
-});*/
-
 app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
   try {
     const { energia, sueno, estres, dolor_muscular, motivacion, apetito } = req.body;
@@ -968,23 +944,23 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
 
       console.log('Guardando en HojasClientes...');
       const [existing] = await connection.execute(
-      'SELECT id_hoja FROM HojasClientes WHERE id_cliente = ?',
-      [safeIdCliente]
-    );
+        'SELECT id_hoja FROM HojasClientes WHERE id_cliente = ?',
+        [safeIdCliente]
+      );
 
       let result;
       if (existing.length > 0) {
         [result] = await connection.execute(
           `UPDATE HojasClientes 
-          SET id_hoja_google = ?, nombre_hoja = ?, activa = TRUE, ultima_sincronizacion = NOW(), id_coach = ?
-          WHERE id_cliente = ?`,
+           SET id_hoja_google = ?, nombre_hoja = ?, activa = TRUE, ultima_sincronizacion = NOW(), id_coach = ?
+           WHERE id_cliente = ?`,
           [safeSheetId, safeNombreHoja, safeIdCoach, safeIdCliente]
         );
         console.log('UPDATE HojasClientes - affectedRows:', result.affectedRows);
       } else {
         [result] = await connection.execute(
           `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja, activa, ultima_sincronizacion) 
-          VALUES (?, ?, ?, ?, TRUE, NOW())`,
+           VALUES (?, ?, ?, ?, TRUE, NOW())`,
           [safeIdCliente, safeIdCoach, safeSheetId, safeNombreHoja]
         );
         console.log('INSERT HojasClientes - affectedRows:', result.affectedRows, 'insertId:', result.insertId);
@@ -1158,7 +1134,6 @@ function limpiarGrupoMuscular(texto) {
   return limpio.charAt(0).toUpperCase() + limpio.slice(1).toLowerCase();
 }
 
-
 function limpiarTexto(texto) {
   if (!texto) return '';
   return texto.toString().replace(/"/g, '').trim();
@@ -1185,6 +1160,45 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
 
     if (req.user.role === 'coach' || (req.user.role === 'user' && req.user.userId == idCliente)) {
       
+      const [cache] = await pool.execute(
+        `SELECT datos_rutina FROM CacheRutinas 
+         WHERE id_cliente = ? 
+         ORDER BY fecha_actualizacion DESC LIMIT 1`,
+        [idCliente]
+      );
+
+      if (cache.length > 0) {
+        try {
+          let rutinaData;
+          if (typeof cache[0].datos_rutina === 'string') {
+            rutinaData = JSON.parse(cache[0].datos_rutina);
+          } else {
+            rutinaData = cache[0].datos_rutina;
+          }
+          
+          const [hojas] = await pool.execute(
+            `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
+             FROM HojasClientes hc
+             JOIN Coach c ON hc.id_coach = c.id_coach
+             WHERE hc.id_cliente = ? AND hc.activa = TRUE`,
+            [idCliente]
+          );
+
+          return res.json({
+            success: true,
+            personalizada: true,
+            hojaVinculada: hojas.length > 0,
+            coach: hojas.length > 0 ? `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}` : 'Coach',
+            ultimaSincronizacion: cache[0].fecha_actualizacion,
+            ejercicios: rutinaData.ejercicios,
+            metadata: rutinaData.metadata,
+            message: 'Rutina cargada desde cache'
+          });
+        } catch (parseError) {
+          console.error('Error parseando cache:', parseError);
+        }
+      }
+
       const [hojas] = await pool.execute(
         `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
          FROM HojasClientes hc
@@ -1221,41 +1235,12 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
           });
 
         } catch (googleError) {
-          const [cache] = await pool.execute(
-          `SELECT datos_rutina FROM CacheRutinas 
-          WHERE id_cliente = ? 
-          ORDER BY fecha_actualizacion DESC LIMIT 1`,
-          [idCliente]
-        );
-
-         if (cache.length > 0) {
-          try {
-            let rutinaData;
-            if (typeof cache[0].datos_rutina === 'string') {
-              rutinaData = JSON.parse(cache[0].datos_rutina);
-            } else {
-              rutinaData = cache[0].datos_rutina;
-            }
-            
-          
-            return res.json({
-              success: true,
-              personalizada: true,  
-              hojaVinculada: hojas.length > 0,  
-              coach: hojas.length > 0 ? `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}` : 'Coach',
-              ultimaSincronizacion: cache[0].fecha_actualizacion,
-              ejercicios: rutinaData.ejercicios,
-              metadata: rutinaData.metadata,
-              message: hojas.length > 0 ? 'Rutina cargada desde Google Sheets' : 'Rutina cargada desde cache'
-            });
-          } catch (parseError) {
-            console.error('Error parseando cache:', parseError);
-          }
-        }
-          
-          return res.status(500).json({
-            success: false,
-            message: 'Error cargando rutina personalizada. Contacta a tu coach.'
+          console.error('Error accediendo a Google Sheets:', googleError);
+          return res.json({
+            success: true,
+            personalizada: false,
+            hojaVinculada: true,
+            message: 'Error accediendo a la hoja de Google Sheets. Contacta a tu coach.'
           });
         }
       }
@@ -1265,7 +1250,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
         personalizada: false,
         hojaVinculada: false,
         ejercicios: [],
-        message: 'Aun no tienes una rutina personalizada asignada. Contacta a tu coach.'
+        message: 'Aún no tienes una rutina personalizada asignada. Contacta a tu coach.'
       });
 
     } else {
@@ -1284,36 +1269,6 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
   }
 });
 
-const startServer = async () => {
-  try {
-    await createTables();
-    const server = app.listen(8081, '0.0.0.0', () => {
-      console.log(`Servidor corriendo en puerto ${PORT}`);
-    });
-
-    process.on('SIGINT', () => {
-      console.log('Apagando servidor...');
-      server.close(() => {
-        console.log('Servidor apagado');
-        process.exit(0);
-      });
-    });
-
-    process.on('SIGTERM', () => {
-      console.log('Recibida señal de terminación');
-      server.close(() => {
-        console.log('Servidor apagado');
-        process.exit(0);
-      });
-    });
-
-  } catch (error) {
-    console.error('Error iniciando servidor:', error);
-    process.exit(1);
-  }
-};
-
-//Endpoint de progreso
 app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -1323,7 +1278,6 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
     let seriesPorGrupo = [];
     let volumenData = [];
     let sesiones = [];
-
 
     try {
       [recordsPeso] = await pool.execute(
@@ -1391,7 +1345,6 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       console.log('Error obteniendo métricas:', error.message);
     }
 
-
     let asistencia = [{ dias_entrenados: 0 }];
     try {
       [asistencia] = await pool.execute(
@@ -1423,7 +1376,6 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       sesiones = [];
     }
 
-
     const pesoPromedio = volumenData[0]?.peso_promedio || 0;
     const seriesTotales = volumenData[0]?.series_totales || 0;
     const diasEntrenadosProgreso = volumenData[0]?.dias_entrenados || 0;
@@ -1447,7 +1399,6 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
       pesoPromedio: Math.round(pesoPromedio)
     };
 
-  
     const datosGraficoCircular = [
       { grupo: 'Pecho', series: Math.round(seriesTotales * 0.3), porcentaje: 30 },
       { grupo: 'Piernas', series: Math.round(seriesTotales * 0.25), porcentaje: 25 },
@@ -1562,8 +1513,6 @@ app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) 
   }
 });
 
-//Debug para progreso
-
 app.get('/api/progreso/debug', authenticateToken, (req, res) => {
   res.json({
     success: true,
@@ -1572,7 +1521,6 @@ app.get('/api/progreso/debug', authenticateToken, (req, res) => {
   });
 });
 
-// ENDPOINT PARA ACTUALIZAR PESO Y REPS 
 app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, res) => {
   try {
     const {
@@ -1629,7 +1577,6 @@ app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, re
   }
 });
 
-
 app.get('/api/progreso/historial-pesos', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -1663,8 +1610,6 @@ app.get('/api/progreso/historial-pesos', authenticateToken, async (req, res) => 
     });
   }
 });
-
-//Endpoint para crear reunion en google meet
 
 app.post('/api/meet/crear-sesion', authenticateToken, async (req, res) => {
   try {
@@ -1817,8 +1762,6 @@ app.post('/api/meet/completar-sesion', authenticateToken, async (req, res) => {
   }
 });
 
-//Debug temporal 
-
 app.post('/api/auth/login-coach-temp', async (req, res) => {
   try {
     const { email, contraseña } = req.body;
@@ -1887,7 +1830,6 @@ app.post('/api/auth/login-coach-temp', async (req, res) => {
   }
 });
 
-//temporal
 app.get('/api/debug/hojas-cliente/:idCliente', async (req, res) => {
   try {
     const { idCliente } = req.params;
@@ -1917,9 +1859,6 @@ app.get('/api/debug/hojas-cliente/:idCliente', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-
-//temporal 
 
 app.get('/api/debug/hoja-cruda/:idCliente', authenticateToken, async (req, res) => {
   try {
@@ -1953,7 +1892,6 @@ app.get('/api/debug/hoja-cruda/:idCliente', authenticateToken, async (req, res) 
   }
 });
 
-//temporal para forzar vinculacion 
 app.post('/api/debug/forzar-vinculacion', async (req, res) => {
   try {
     const { idCliente, idCoach, sheetId } = req.body;
@@ -1980,5 +1918,88 @@ app.post('/api/debug/forzar-vinculacion', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+app.get('/api/debug/vinculacion-completa/:idCliente', async (req, res) => {
+  try {
+    const { idCliente } = req.params;
+    
+    const [hojas] = await pool.execute(
+      `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
+       FROM HojasClientes hc
+       JOIN Coach c ON hc.id_coach = c.id_coach
+       WHERE hc.id_cliente = ?`,
+      [idCliente]
+    );
+
+    const [cache] = await pool.execute(
+      `SELECT * FROM CacheRutinas WHERE id_cliente = ?`,
+      [idCliente]
+    );
+
+    const [usuario] = await pool.execute(
+      `SELECT id_usuario, nombre, apellido FROM Usuario WHERE id_usuario = ?`,
+      [idCliente]
+    );
+
+    let datosCache = null;
+    if (cache.length > 0) {
+      try {
+        datosCache = typeof cache[0].datos_rutina === 'string' 
+          ? JSON.parse(cache[0].datos_rutina) 
+          : cache[0].datos_rutina;
+      } catch (e) {
+        datosCache = { error: 'No se pudo parsear' };
+      }
+    }
+
+    res.json({
+      usuario: usuario.length > 0 ? usuario[0] : null,
+      hojas: hojas,
+      cache: {
+        existe: cache.length > 0,
+        cantidad: cache.length,
+        datos: datosCache
+      },
+      resumen: {
+        tieneHoja: hojas.length > 0,
+        tieneCache: cache.length > 0,
+        hojaActiva: hojas.length > 0 ? hojas[0].activa : false
+      }
+    });
+
+  } catch (error) {
+    console.error('Error en debug completo:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+const startServer = async () => {
+  try {
+    await createTables();
+    const server = app.listen(8081, '0.0.0.0', () => {
+      console.log(`Servidor corriendo en puerto ${PORT}`);
+    });
+
+    process.on('SIGINT', () => {
+      console.log('Apagando servidor...');
+      server.close(() => {
+        console.log('Servidor apagado');
+        process.exit(0);
+      });
+    });
+
+    process.on('SIGTERM', () => {
+      console.log('Recibida señal de terminación');
+      server.close(() => {
+        console.log('Servidor apagado');
+        process.exit(0);
+      });
+    });
+
+  } catch (error) {
+    console.error('Error iniciando servidor:', error);
+    process.exit(1);
+  }
+};
 
 startServer();
