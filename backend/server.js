@@ -1192,8 +1192,6 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
           });
 
         } catch (googleError) {
-          console.error('Error leyendo Google Sheets, usando cache:', googleError);
-          
           const [cache] = await pool.execute(
             `SELECT datos_rutina FROM CacheRutinas 
              WHERE id_cliente = ? 
@@ -1236,7 +1234,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
         personalizada: false,
         hojaVinculada: false,
         ejercicios: [],
-        message: 'Aún no tienes una rutina personalizada asignada. Contacta a tu coach.'
+        message: 'Aun no tienes una rutina personalizada asignada. Contacta a tu coach.'
       });
 
     } else {

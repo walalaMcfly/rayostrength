@@ -39,7 +39,7 @@ export default function RutinasScreen() {
         setUserToken(token);
       } catch (error) {
         console.error('Error obteniendo token:', error);
-        Alert.alert('Error', 'No se pudo obtener la sesión');
+        Alert.alert('Error', 'No se pudo obtener la sesion');
       }
     };
 
@@ -52,80 +52,96 @@ export default function RutinasScreen() {
     }
   }, [userToken]);
 
-const cargarRutinaPersonalizada = async () => {
-  try {
-    setLoading(true);
-    const token = await AsyncStorage.getItem('userToken');
-    const user = JSON.parse(await AsyncStorage.getItem('userData'));
+  const cargarRutinaPersonalizada = async () => {
+    try {
+      setLoading(true);
+      const token = await AsyncStorage.getItem('userToken');
+      const user = JSON.parse(await AsyncStorage.getItem('userData'));
 
-    const response = await fetch(`${BASE_URL}/api/rutinas-personalizadas/cliente/${user.id_usuario}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+      console.log('Cargando rutina para usuario:', user.id_usuario);
 
-    if (response.status === 401) {
-      throw new Error('Token inválido o expirado');
-    }
-
-    if (!response.ok) {
-      throw new Error(`Error HTTP: ${response.status}`);
-    }
-
-    const result = await response.json();
-
-    if (result.success !== false) {
-      setRutina({
-        personalizada: result.personalizada || false,
-        hojaVinculada: result.hojaVinculada || false,
-        coach: result.coach || '',
-        ejercicios: result.ejercicios || [],
-        message: result.message || ''
+      const response = await fetch(`${BASE_URL}/api/rutinas-personalizadas/cliente/${user.id_usuario}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
-    } else {
-      Alert.alert('Error', result.message || 'Error al cargar rutinas');
-    }
-  } catch (error) {
-    console.error('Error cargando rutina:', error);
-    
-    if (error.message.includes('Token') || error.message.includes('401')) {
-      Alert.alert('Sesión expirada', 'Por favor inicia sesión nuevamente');
-      await AsyncStorage.removeItem('userToken');
-      router.replace('/');
-    } else {
-      Alert.alert('Error', 'No se pudieron cargar las rutinas: ' + error.message);
-    }
-  } finally {
-    setLoading(false);
-  }
-};
 
- const onRefresh = async () => {
-  try {
-    setRefreshing(true);
-    console.log(' Sincronizando con Google Sheets...');
-    
-    const token = await AsyncStorage.getItem('userToken');
-    const user = JSON.parse(await AsyncStorage.getItem('userData'));
-    await fetch(`${BASE_URL}/api/rutinas/sincronizar/${user.id_usuario}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-    
-    // Recargar datos
-    await cargarRutinaPersonalizada();
-    
-    console.log(' Sincronización completada');
-  } catch (error) {
-    console.error(' Error en sincronización:', error);
-  } finally {
-    setRefreshing(false);
-  }
-};
+      console.log('Status de respuesta:', response.status);
+
+      if (response.status === 401) {
+        throw new Error('Token invalido o expirado');
+      }
+
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Respuesta completa del backend:', JSON.stringify(result, null, 2));
+
+      if (result.success !== false) {
+        console.log('Datos recibidos:');
+        console.log('personalizada:', result.personalizada);
+        console.log('hojaVinculada:', result.hojaVinculada);
+        console.log('ejercicios:', result.ejercicios);
+        console.log('cantidad ejercicios:', result.ejercicios ? result.ejercicios.length : 0);
+        
+        if (result.ejercicios && result.ejercicios.length > 0) {
+          console.log('Estructura del primer ejercicio:', JSON.stringify(result.ejercicios[0], null, 2));
+        }
+
+        setRutina({
+          personalizada: result.personalizada || false,
+          hojaVinculada: result.hojaVinculada || false,
+          coach: result.coach || '',
+          ejercicios: result.ejercicios || [],
+          message: result.message || ''
+        });
+
+      } else {
+        console.error('Error en respuesta del servidor:', result.message);
+        Alert.alert('Error', result.message || 'Error al cargar rutinas');
+      }
+    } catch (error) {
+      console.error('Error cargando rutina:', error);
+      
+      if (error.message.includes('Token') || error.message.includes('401')) {
+        Alert.alert('Sesion expirada', 'Por favor inicia sesion nuevamente');
+        await AsyncStorage.removeItem('userToken');
+        router.replace('/');
+      } else {
+        Alert.alert('Error', 'No se pudieron cargar las rutinas: ' + error.message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    try {
+      setRefreshing(true);
+      console.log('Sincronizando con Google Sheets...');
+      
+      const token = await AsyncStorage.getItem('userToken');
+      const user = JSON.parse(await AsyncStorage.getItem('userData'));
+      await fetch(`${BASE_URL}/api/rutinas/sincronizar/${user.id_usuario}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      await cargarRutinaPersonalizada();
+      
+      console.log('Sincronizacion completada');
+    } catch (error) {
+      console.error('Error en sincronizacion:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const abrirModalDatosReales = (ejercicio) => {
     setEjercicioEditando(ejercicio);
@@ -138,7 +154,7 @@ const cargarRutinaPersonalizada = async () => {
       const token = await AsyncStorage.getItem('userToken');
       
       if (!token) {
-        throw new Error('No hay token de autenticación');
+        throw new Error('No hay token de autenticacion');
       }
 
       const payload = {
@@ -166,7 +182,7 @@ const cargarRutinaPersonalizada = async () => {
       try {
         data = JSON.parse(responseText);
       } catch (parseError) {
-        throw new Error('Respuesta inválida del servidor');
+        throw new Error('Respuesta invalida del servidor');
       }
 
       if (!response.ok || !data.success) {
@@ -181,63 +197,64 @@ const cargarRutinaPersonalizada = async () => {
         }
       }));
 
-      Alert.alert('Éxito', 'Datos guardados correctamente');
+      Alert.alert('Exito', 'Datos guardados correctamente');
     } catch (error) {
-      console.error(' Error guardarDatosReales:', error);
+      console.error('Error guardarDatosReales:', error);
       Alert.alert(
         'Error al guardar',
-        error.message || 'No se pudieron guardar los datos. Verifica tu conexión.'
+        error.message || 'No se pudieron guardar los datos. Verifica tu conexion.'
       );
     }
   };
 
- const toggleSet = async (ejercicioId, setNumber) => {
-  try {
-    const nuevosSets = { ...setsCompletados };
-    if (!nuevosSets[ejercicioId]) nuevosSets[ejercicioId] = {};
-    
-    nuevosSets[ejercicioId][setNumber] = !nuevosSets[ejercicioId]?.[setNumber];
-    setSetsCompletados(nuevosSets);
+  const toggleSet = async (ejercicioId, setNumber) => {
+    try {
+      const nuevosSets = { ...setsCompletados };
+      if (!nuevosSets[ejercicioId]) nuevosSets[ejercicioId] = {};
+      
+      nuevosSets[ejercicioId][setNumber] = !nuevosSets[ejercicioId]?.[setNumber];
+      setSetsCompletados(nuevosSets);
 
-    const setsCompletadosCount = Object.values(nuevosSets[ejercicioId] || {}).filter(Boolean).length;
-    const ejercicio = rutina.ejercicios.find(e => e.id === ejercicioId);
-    
-    const payload = {
-      id_ejercicio: ejercicioId,
-      nombre_ejercicio: ejercicio?.nombre,
-      sets_completados: setsCompletadosCount,
-      reps_logradas: realesData[ejercicioId]?.repsReales || ejercicio?.repeticiones,
-      peso_utilizado: realesData[ejercicioId]?.pesoReal || ejercicio?.pesoSugerido,
-      rir_final: ejercicio?.rir,
-      notas: notasCliente[ejercicioId] || `Completado: ${setsCompletadosCount}/${ejercicio?.series} sets`
-    };
+      const setsCompletadosCount = Object.values(nuevosSets[ejercicioId] || {}).filter(Boolean).length;
+      const ejercicio = rutina.ejercicios.find(e => e.id === ejercicioId);
+      
+      const payload = {
+        id_ejercicio: ejercicioId,
+        nombre_ejercicio: ejercicio?.nombre,
+        sets_completados: setsCompletadosCount,
+        reps_logradas: realesData[ejercicioId]?.repsReales || ejercicio?.repeticiones,
+        peso_utilizado: realesData[ejercicioId]?.pesoReal || ejercicio?.pesoSugerido,
+        rir_final: ejercicio?.rir,
+        notas: notasCliente[ejercicioId] || `Completado: ${setsCompletadosCount}/${ejercicio?.series} sets`
+      };
 
-    console.log('Guardando progreso de sets:', payload);
+      console.log('Guardando progreso de sets:', payload);
 
-    const response = await fetch(`${BASE_URL}/api/progreso/guardar-ejercicio`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${userToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+      const response = await fetch(`${BASE_URL}/api/progreso/guardar-ejercicio`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${userToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
 
-    if (!response.ok) {
-      console.error(' Error guardando sets');
-    } else {
-      console.log('Sets guardados correctamente');
+      if (!response.ok) {
+        console.error('Error guardando sets');
+      } else {
+        console.log('Sets guardados correctamente');
+      }
+
+      if (setsCompletadosCount === ejercicio?.series) {
+        console.log('Ejercicio completado!');
+        verificarRutinaCompletada();
+      }
+
+    } catch (error) {
+      console.error('Error en toggleSet:', error);
     }
+  };
 
-    if (setsCompletadosCount === ejercicio?.series) {
-      console.log(' Ejercicio completado!');
-      verificarRutinaCompletada();
-    }
-
-  } catch (error) {
-    console.error(' Error en toggleSet:', error);
-  }
-};
   const verificarRutinaCompletada = async () => {
     try {
       const ejerciciosCompletados = rutina.ejercicios.filter(ejercicio => {
@@ -250,12 +267,12 @@ const cargarRutinaPersonalizada = async () => {
 
       if (porcentajeCompletitud >= 80 && ejerciciosCompletados < rutina.ejercicios.length) {
         Alert.alert(
-          "¿Rutina completada?",
-          `Has completado ${ejerciciosCompletados} de ${rutina.ejercicios.length} ejercicios. ¿Quieres marcar la rutina como completada?`,
+          "Rutina completada?",
+          `Has completado ${ejerciciosCompletados} de ${rutina.ejercicios.length} ejercicios. Quieres marcar la rutina como completada?`,
           [
-            { text: "No, aún no", style: "cancel" },
+            { text: "No, aun no", style: "cancel" },
             { 
-              text: "Sí, completada", 
+              text: "Si, completada", 
               onPress: () => registrarSesionCompletada(ejerciciosCompletados) 
             }
           ]
@@ -271,39 +288,39 @@ const cargarRutinaPersonalizada = async () => {
     }
   };
 
-const registrarSesionCompletada = async (ejerciciosCompletados) => {
-  try {
-    const volumenTotal = rutina.ejercicios.reduce((total, ejercicio) => {
-      const peso = parseFloat(realesData[ejercicio.id]?.pesoReal || '0') || 0;
-      const series = ejercicio.series || 0;
-      const reps = parseFloat(realesData[ejercicio.id]?.repsReales || '0') || 0;
-      return total + (peso * series * reps);
-    }, 0);
+  const registrarSesionCompletada = async (ejerciciosCompletados) => {
+    try {
+      const volumenTotal = rutina.ejercicios.reduce((total, ejercicio) => {
+        const peso = parseFloat(realesData[ejercicio.id]?.pesoReal || '0') || 0;
+        const series = ejercicio.series || 0;
+        const reps = parseFloat(realesData[ejercicio.id]?.repsReales || '0') || 0;
+        return total + (peso * series * reps);
+      }, 0);
 
-    await fetch(`${BASE_URL}/api/progreso/registrar-sesion`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${userToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        semana_rutina: 'Personalizada',
-        total_ejercicios: rutina.ejercicios.length,
-        ejercicios_completados: ejerciciosCompletados,
-        duracion_total_minutos: 60,
-        volumen_total: volumenTotal,
-        notas_usuario: 'Rutina personalizada completada'
-      }),
-    });
+      await fetch(`${BASE_URL}/api/progreso/registrar-sesion`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${userToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          semana_rutina: 'Personalizada',
+          total_ejercicios: rutina.ejercicios.length,
+          ejercicios_completados: ejerciciosCompletados,
+          duracion_total_minutos: 60,
+          volumen_total: volumenTotal,
+          notas_usuario: 'Rutina personalizada completada'
+        }),
+      });
 
-    Alert.alert("Rutina Completada", "Tu progreso ha sido guardado correctamente");
-    setShowModalCompletar(false);
+      Alert.alert("Rutina Completada", "Tu progreso ha sido guardado correctamente");
+      setShowModalCompletar(false);
 
-  } catch (error) {
-    console.error('Error registrando sesión completada:', error);
-    Alert.alert("Error", "No se pudo guardar la sesión completada");
-  }
-};
+    } catch (error) {
+      console.error('Error registrando sesion completada:', error);
+      Alert.alert("Error", "No se pudo guardar la sesion completada");
+    }
+  };
 
   const guardarNotas = async (ejercicioId, texto) => {
     const nuevasNotas = { ...notasCliente, [ejercicioId]: texto };
@@ -335,25 +352,38 @@ const registrarSesionCompletada = async (ejerciciosCompletados) => {
   };
 
   const renderItem = ({ item, index }) => {
-    const datosReales = realesData[item.id];
-    const setsCompletadosCount = Object.values(setsCompletados[item.id] || {}).filter(Boolean).length;
-    const completado = setsCompletadosCount === item.series;
+    const ejercicio = {
+      id: item.id || `ej-${index}`,
+      grupoMuscular: item.grupoMuscular || 'General',
+      nombre: item.nombre || 'Ejercicio sin nombre',
+      video: item.video || '',
+      series: item.series || 0,
+      repeticiones: item.repeticiones || '',
+      rir: item.rir || 0,
+      descanso: item.descanso || ''
+    };
+
+    console.log('Renderizando ejercicio:', ejercicio.nombre);
+
+    const datosReales = realesData[ejercicio.id];
+    const setsCompletadosCount = Object.values(setsCompletados[ejercicio.id] || {}).filter(Boolean).length;
+    const completado = setsCompletadosCount === ejercicio.series;
 
     return (
       <View style={[styles.card, completado && styles.cardCompletada]}>
-        {item.grupoMuscular && item.grupoMuscular !== 'General' && (
+        {ejercicio.grupoMuscular && ejercicio.grupoMuscular !== 'General' && (
           <View style={styles.grupoHeader}>
-            <Text style={styles.grupoText}>{item.grupoMuscular}</Text>
+            <Text style={styles.grupoText}>{ejercicio.grupoMuscular}</Text>
           </View>
         )}
 
         <View style={styles.exerciseHeader}>
-          <Text style={styles.exerciseName}>{item.nombre}</Text>
+          <Text style={styles.exerciseName}>{ejercicio.nombre}</Text>
           {completado && <Ionicons name="checkmark-circle" size={20} color={colors.active} />}
         </View>
 
-        {item.video && item.video !== '-' && (
-          <TouchableOpacity onPress={() => Linking.openURL(item.video)}>
+        {ejercicio.video && ejercicio.video !== '-' && (
+          <TouchableOpacity onPress={() => Linking.openURL(ejercicio.video)}>
             <View style={styles.row}>
               <Ionicons name="play-circle" size={20} color={colors.icon} />
               <Text style={styles.videoText}>Ver video</Text>
@@ -362,12 +392,12 @@ const registrarSesionCompletada = async (ejerciciosCompletados) => {
         )}
 
         <Text style={styles.details}>
-          Series {item.series} / Reps {item.repeticiones} / RIR {item.rir} / Descanso {item.descanso}
+          Series {ejercicio.series} / Reps {ejercicio.repeticiones} {ejercicio.rir ? `/ RIR ${ejercicio.rir}` : ''} {ejercicio.descanso ? `/ Descanso ${ejercicio.descanso}` : ''}
         </Text>
 
         {datosReales && (
           <View style={styles.realesContainer}>
-            <Text style={styles.realesTitle}>🎯 Tus datos reales:</Text>
+            <Text style={styles.realesTitle}>Tus datos reales:</Text>
             <Text style={styles.realesText}>
               Reps: {datosReales.repsReales} | Peso: {datosReales.pesoReal}
             </Text>
@@ -375,18 +405,18 @@ const registrarSesionCompletada = async (ejerciciosCompletados) => {
         )}
 
         <View style={styles.setsRow}>
-          {[1, 2, 3, 4].slice(0, item.series).map((setNum) => (
+          {Array.from({ length: ejercicio.series || 0 }, (_, i) => i + 1).map((setNum) => (
             <TouchableOpacity
               key={setNum}
               style={[
                 styles.setButton,
                 {
-                  backgroundColor: setsCompletados[item.id]?.[setNum]
+                  backgroundColor: setsCompletados[ejercicio.id]?.[setNum]
                     ? colors.active
                     : colors.inactive,
                 },
               ]}
-              onPress={() => toggleSet(item.id, setNum)}
+              onPress={() => toggleSet(ejercicio.id, setNum)}
             >
               <Text style={{ color: colors.text }}>Set {setNum}</Text>
             </TouchableOpacity>
@@ -395,7 +425,7 @@ const registrarSesionCompletada = async (ejerciciosCompletados) => {
 
         <TouchableOpacity 
           style={styles.botonReales}
-          onPress={() => abrirModalDatosReales(item)}
+          onPress={() => abrirModalDatosReales(ejercicio)}
         >
           <Ionicons name="create-outline" size={16} color={colors.text} />
           <Text style={styles.textoBotonReales}>
@@ -406,10 +436,10 @@ const registrarSesionCompletada = async (ejerciciosCompletados) => {
         <View style={styles.feedbackBox}>
           <Text style={styles.feedbackLabel}>Nota Cliente:</Text>
           <TextInput
-            placeholder="¿Cómo me sentí?"
+            placeholder="Como me senti?"
             placeholderTextColor={colors.placeholder}
-            value={notasCliente[item.id] || ""}
-            onChangeText={(text) => guardarNotas(item.id, text)}
+            value={notasCliente[ejercicio.id] || ""}
+            onChangeText={(text) => guardarNotas(ejercicio.id, text)}
             style={styles.feedbackInput}
             multiline
           />
@@ -429,28 +459,43 @@ const registrarSesionCompletada = async (ejerciciosCompletados) => {
 
   return (
     <View style={styles.container}>
-      {/* ✅ HEADER COMPACTO - SOLO INFO DEL COACH Y FECHA */}
       {rutina?.personalizada ? (
-          <View style={styles.headerCompact}>
-            <View style={styles.infoContainer}>
-              <Text style={styles.coachText}>Creada por: {rutina.coach}</Text>
-              <Text style={styles.syncText}>
-                Última actualización: {new Date(rutina.ultimaSincronizacion).toLocaleDateString()}
-              </Text>
-            </View>
+        <View style={styles.headerCompact}>
+          <View style={styles.infoContainer}>
+            <Text style={styles.coachText}>Creada por: {rutina.coach}</Text>
+            <Text style={styles.syncText}>
+              Ultima actualizacion: {new Date().toLocaleDateString()}
+            </Text>
           </View>
-        ) : (
-          <View style={styles.headerCompact}>
-            <View style={styles.infoContainer}>
-              <Text style={styles.infoText}>
-                {rutina?.message || 'Tu coach aún no te ha asignado una rutina personalizada.'}
-              </Text>
-            </View>
+        </View>
+      ) : (
+        <View style={styles.headerCompact}>
+          <View style={styles.infoContainer}>
+            <Text style={styles.infoText}>
+              {rutina?.message || 'Tu coach aun no te ha asignado una rutina personalizada.'}
+            </Text>
           </View>
-        )}
+        </View>
+      )}
+
+      {rutina && (
+        <View style={{ padding: 10, backgroundColor: '#fff', margin: 10, borderRadius: 8 }}>
+          <Text style={{ fontWeight: 'bold', color: '#000' }}>DEBUG:</Text>
+          <Text style={{ color: '#000' }}>Rutina cargada: {rutina.personalizada ? 'Si' : 'No'}</Text>
+          <Text style={{ color: '#000' }}>Ejercicios: {rutina.ejercicios ? rutina.ejercicios.length : 0}</Text>
+          {rutina.ejercicios && rutina.ejercicios.length > 0 && (
+            <Text style={{ color: '#000' }}>Primer ejercicio: {rutina.ejercicios[0].nombre}</Text>
+          )}
+        </View>
+      )}
+
       <FlatList
         data={rutina?.ejercicios || []}
-        keyExtractor={(item, index) => item.id || `ej-${index}`}
+        keyExtractor={(item, index) => {
+          const key = item.id || `ej-${index}`;
+          console.log('Key para ejercicio:', key);
+          return key;
+        }}
         renderItem={renderItem}
         contentContainerStyle={{ paddingBottom: 24 }}
         refreshing={refreshing} 
@@ -459,7 +504,7 @@ const registrarSesionCompletada = async (ejerciciosCompletados) => {
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
               {rutina?.personalizada === false 
-                ? 'No tienes rutina personalizada' 
+                ? 'No tienes rutina personalizada asignada' 
                 : 'No hay ejercicios disponibles'
               }
             </Text>
@@ -467,7 +512,7 @@ const registrarSesionCompletada = async (ejerciciosCompletados) => {
               {rutina?.message || 'Contacta a tu coach para que te asigne una rutina personalizada.'}
             </Text>
           </View>
-}
+        }
       />
 
       {rutina?.ejercicios && rutina.ejercicios.length > 0 && (
@@ -493,7 +538,7 @@ const registrarSesionCompletada = async (ejerciciosCompletados) => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>📝 Peso y Repeticiones Realizadas - {ejercicioEditando?.nombre}</Text>
+            <Text style={styles.modalTitle}>Peso y Repeticiones Realizadas - {ejercicioEditando?.nombre}</Text>
             
             <View style={styles.modalField}>
               <Text style={styles.modalLabel}>Repeticiones Realizadas:</Text>
@@ -550,12 +595,12 @@ const registrarSesionCompletada = async (ejerciciosCompletados) => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>🎯 Completar Rutina</Text>
+            <Text style={styles.modalTitle}>Completar Rutina</Text>
             <Text style={styles.modalText}>
-              ¿Estás seguro de que quieres marcar esta rutina como completada?
+              Estas seguro de que quieres marcar esta rutina como completada?
             </Text>
             <Text style={styles.modalSubtext}>
-              Se guardarán todos tus datos de progreso.
+              Se guardaran todos tus datos de progreso.
             </Text>
             
             <View style={styles.modalButtons}>
@@ -576,7 +621,7 @@ const registrarSesionCompletada = async (ejerciciosCompletados) => {
                   registrarSesionCompletada(ejerciciosCompletados);
                 }}
               >
-                <Text style={styles.modalButtonTextConfirm}>Sí, Completar</Text>
+                <Text style={styles.modalButtonTextConfirm}>Si, Completar</Text>
               </TouchableOpacity>
             </View>
           </View>
