@@ -258,67 +258,40 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
-    console.log('=== INICIO DEBUG LOGIN ===');
-    console.log('Email recibido:', email);
-    console.log('Contraseña recibida (longitud):', contraseña.length);
+    console.log('=== INICIO LOGIN ===');
+    console.log('Email:', email);
+    console.log('Contraseña longitud:', contraseña.length);
 
     let user = null;
     let role = 'user';
 
-    // Buscar como coach
     const [coaches] = await pool.execute(
       'SELECT * FROM Coach WHERE email = ?',
       [email]
     );
 
     if (coaches.length > 0) {
-      console.log('✅ Coach encontrado en BD');
+      console.log('Coach encontrado');
       user = coaches[0];
       role = 'coach';
       
-     
-      console.log(' Hash en BD:', user.contraseña);
-      console.log(' Longitud hash BD:', user.contraseña?.length);
-      console.log(' ¿Hash comienza con $2?:', user.contraseña?.startsWith('$2'));
-      console.log(' Prefix hash:', user.contraseña?.substring(0, 10));
-      
-      if (!user.contraseña || !user.contraseña.startsWith('$2')) {
-        console.log('Hash no es bcrypt válido');
-        return res.status(401).json({
-          success: false,
-          message: 'Error de autenticación. Contacta al administrador.'
-        });
-      }
+      console.log('Hash en BD:', user.contraseña.substring(0, 20) + '...');
+      console.log('Longitud hash:', user.contraseña.length);
 
-      console.log('🔄 Iniciando comparación bcrypt...');l
+      // COMPARACIÓN BCRYPT SIMPLE Y SEGURA
+      console.log('Comparando contraseña...');
       const validPassword = await bcrypt.compare(contraseña, user.contraseña);
-      console.log('🔍 Resultado bcrypt.compare:', validPassword);
+      console.log('Resultado comparación:', validPassword);
       
       if (!validPassword) {
-        console.log('🔄 Testeando funcionalidad de bcrypt...');
-        const testPassword = 'Coach123';
-        const testHash = await bcrypt.hash(testPassword, 12);
-        const testCompare = await bcrypt.compare(testPassword, testHash);
-        console.log('🔍 Test bcrypt (debería ser true):', testCompare);
-        const testCompare2 = await bcrypt.compare('Coach123', user.contraseña);
-        console.log('🔍 Comparación con "Coach123":', testCompare2);
-        console.log('🔍 Contraseña recibida (caracteres):');
-        console.log('  - Original:', contraseña);
-        console.log('  - Trimmed:', contraseña.trim());
-        console.log('  - Longitud trimmed:', contraseña.trim().length);
-        
+        console.log('Contraseña incorrecta');
         return res.status(401).json({
           success: false,
-          message: 'Email o contraseña incorrectos',
-          debug: {
-            bcrypt_compare: validPassword,
-            bcrypt_test: testCompare,
-            compare_with_coach123: testCompare2
-          }
+          message: 'Email o contraseña incorrectos'
         });
       }
       
-      console.log(' Contraseña válida - Login exitoso');
+      console.log('Contraseña válida');
       
     } else {
       const [users] = await pool.execute(
@@ -340,12 +313,14 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     if (!user) {
-      console.log(' Usuario no encontrado');
+      console.log('Usuario no encontrado');
       return res.status(401).json({
         success: false,
         message: 'Email o contraseña incorrectos'
       });
     }
+
+    // GENERAR TOKEN
     let tokenPayload;
     if (role === 'user') {
       tokenPayload = { 
@@ -367,8 +342,8 @@ app.post('/api/auth/login', async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    console.log('✅ LOGIN EXITOSO - Rol:', role);
-    console.log('=== FIN DEBUG LOGIN ===');
+    console.log('LOGIN EXITOSO');
+    console.log('=== FIN LOGIN ===');
 
     if (role === 'user') {
       res.json({
@@ -407,7 +382,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
   } catch (error) {
-    console.error(' ERROR CRÍTICO EN LOGIN:', error);
+    console.error('ERROR EN LOGIN:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor: ' + error.message
