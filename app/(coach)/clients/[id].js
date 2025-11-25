@@ -44,11 +44,8 @@ export default function ClientDetail() {
     try {
       setLoading(true);
       const token = await AsyncStorage.getItem('userToken');
-      
-
       await loadDatosRealesCliente(token);
       await loadRutinaData(token);
-      
     } catch (error) {
       console.error('Error cargando datos del cliente:', error);
       Alert.alert('Error', 'No se pudieron cargar los datos del cliente');
@@ -58,126 +55,112 @@ export default function ClientDetail() {
     }
   };
 
- const loadDatosRealesCliente = async (token) => {
-  try {
-    console.log('🔍 Cargando datos para cliente ID:', id);
-    console.log('🔑 Token:', token ? 'Presente' : 'Faltante');
-
-    const response = await fetch(`${API_URL}/coach/cliente/${id}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+  const handleCreateMeetSession = () => {
+    router.push({
+      pathname: '/(coach)/crear-sesion-meet',
+      params: { clientId: id }
     });
+  };
 
-    console.log('📡 Response status:', response.status);
-    console.log('📡 Response ok:', response.ok);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Error HTTP:', response.status, errorText);
-      
-      if (response.status === 404) {
-        console.log('❌ Cliente no encontrado en BD');
-        setDatosMinimos();
-        return;
-      }
-      
-      if (response.status === 403) {
-        Alert.alert('Error', 'No tienes permisos para ver este cliente');
-        setDatosMinimos();
-        return;
-      }
-      
-      throw new Error(`Error ${response.status}: ${errorText}`);
-    }
-    const result = await response.json();
-    console.log('📊 Datos recibidos del backend:', result);
-
-    if (result.success && result.cliente) {
-      const clienteData = result.cliente;
-      console.log('✅ Cliente data:', clienteData);
-     
-      setCliente({
-        id_usuario: clienteData.id_usuario,
-        nombre: clienteData.nombre,
-        apellido: clienteData.apellido,
-        email: clienteData.email,
-        edad: clienteData.edad,
-        sexo: clienteData.sexo,
-        peso_actual: clienteData.peso_actual,
-        altura: clienteData.altura,
-        objetivo: clienteData.objetivo,
-        experiencia: clienteData.experiencia,
-        fecha_registro: clienteData.fecha_registro
+  const loadDatosRealesCliente = async (token) => {
+    try {
+      const response = await fetch(`${API_URL}/coach/cliente/${id}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
 
-      setProgresoData({
-        rutinas_completadas: clienteData.rutinas_completadas,
-        total_sesiones: clienteData.total_sesiones,
-        porcentaje_completitud: clienteData.porcentaje_completitud,
-        consistencia: clienteData.consistencia,
-        dias_entrenados_mes: clienteData.dias_entrenados_mes,
-        estado: clienteData.estado,
-        ultima_sesion: clienteData.ultima_sesion,
-        pesos_maximos: clienteData.pesos_maximos || [],
-        ejercicios_recientes: clienteData.ejercicios_recientes || []
-      });
-
-      if (clienteData.wellness_hoy) {
-        setWellnessData({
-          fecha: new Date().toISOString().split('T')[0],
-          ...clienteData.wellness_hoy,
-          notas: 'Encuesta completada hoy'
+      if (!response.ok) {
+        if (response.status === 404) {
+          setDatosMinimos();
+          return;
+        }
+        if (response.status === 403) {
+          Alert.alert('Error', 'No tienes permisos para ver este cliente');
+          setDatosMinimos();
+          return;
+        }
+        throw new Error(`Error ${response.status}`);
+      }
+      
+      const result = await response.json();
+      if (result.success && result.cliente) {
+        const clienteData = result.cliente;
+        setCliente({
+          id_usuario: clienteData.id_usuario,
+          nombre: clienteData.nombre,
+          apellido: clienteData.apellido,
+          email: clienteData.email,
+          edad: clienteData.edad,
+          sexo: clienteData.sexo,
+          peso_actual: clienteData.peso_actual,
+          altura: clienteData.altura,
+          objetivo: clienteData.objetivo,
+          experiencia: clienteData.experiencia,
+          fecha_registro: clienteData.fecha_registro
         });
-      } else {
-        setWellnessData(null);
-      }
 
-      console.log('✅ Datos cargados exitosamente');
-      return;
-    } else {
-      console.log('❌ Backend respondió con success: false', result.message);
+        setProgresoData({
+          rutinas_completadas: clienteData.rutinas_completadas,
+          total_sesiones: clienteData.total_sesiones,
+          porcentaje_completitud: clienteData.porcentaje_completitud,
+          consistencia: clienteData.consistencia,
+          dias_entrenados_mes: clienteData.dias_entrenados_mes,
+          estado: clienteData.estado,
+          ultima_sesion: clienteData.ultima_sesion,
+          pesos_maximos: clienteData.pesos_maximos || [],
+          ejercicios_recientes: clienteData.ejercicios_recientes || []
+        });
+
+        if (clienteData.wellness_hoy) {
+          setWellnessData({
+            fecha: new Date().toISOString().split('T')[0],
+            ...clienteData.wellness_hoy,
+            notas: 'Encuesta completada hoy'
+          });
+        } else {
+          setWellnessData(null);
+        }
+        return;
+      } else {
+        setDatosMinimos();
+      }
+    } catch (error) {
+      console.error('Error cargando datos reales:', error);
+      Alert.alert('Error', 'No se pudieron cargar los datos');
       setDatosMinimos();
     }
-    
-  } catch (error) {
-    console.error('❌ Error cargando datos reales:', error);
-    Alert.alert('Error', `No se pudieron cargar los datos: ${error.message}`);
-    setDatosMinimos();
-  }
-};
+  };
 
- const setDatosMinimos = () => {
-  setCliente({
-    id_usuario: id,
-    nombre: 'Cliente',
-    apellido: 'Nuevo',
-    email: 'cliente@ejemplo.com',
-    edad: null,
-    sexo: null,
-    peso_actual: null,
-    altura: null,
-    // objetivo: null,  // REMOVER
-    // experiencia: null, // REMOVER
-    fecha_registro: new Date().toISOString()
-  });
+  const setDatosMinimos = () => {
+    setCliente({
+      id_usuario: id,
+      nombre: 'Cliente',
+      apellido: 'Nuevo',
+      email: 'cliente@ejemplo.com',
+      edad: null,
+      sexo: null,
+      peso_actual: null,
+      altura: null,
+      fecha_registro: new Date().toISOString()
+    });
 
-  setProgresoData({
-    rutinas_completadas: 0,
-    total_sesiones: 0,
-    porcentaje_completitud: 0,
-    consistencia: 0,
-    dias_entrenados_mes: 0,
-    estado: 'nuevo',
-    ultima_sesion: null,
-    pesos_maximos: [],
-    ejercicios_recientes: []
-  });
+    setProgresoData({
+      rutinas_completadas: 0,
+      total_sesiones: 0,
+      porcentaje_completitud: 0,
+      consistencia: 0,
+      dias_entrenados_mes: 0,
+      estado: 'nuevo',
+      ultima_sesion: null,
+      pesos_maximos: [],
+      ejercicios_recientes: []
+    });
 
-  setWellnessData(null);
-};
+    setWellnessData(null);
+  };
 
   const loadRutinaData = async (token) => {
     try {
@@ -216,7 +199,7 @@ export default function ClientDetail() {
         const result = await response.json();
         if (result.success) {
           Alert.alert('Éxito', 'Rutina sincronizada correctamente');
-          loadRutinaData(token); // Recargar datos de rutina
+          loadRutinaData(token);
         }
       } else {
         Alert.alert('Error', 'No se pudo sincronizar la rutina');
@@ -227,7 +210,6 @@ export default function ClientDetail() {
     }
   };
 
-  // Funciones helper para estados y colores
   const getEstadoColor = (estado) => {
     switch(estado) {
       case 'activo': return colors.success;
@@ -299,7 +281,6 @@ export default function ClientDetail() {
         />
       }
     >
-      {/* Header con información del cliente */}
       <View style={styles.header}>
         <View style={styles.clientHeader}>
           <View style={styles.avatar}>
@@ -313,9 +294,10 @@ export default function ClientDetail() {
             </Text>
             <Text style={styles.clientEmail}>{cliente.email}</Text>
             <Text style={styles.clientDetail}>
-              {cliente.edad ? `${cliente.edad} años • ` : ''}
-              {cliente.sexo ? `${cliente.sexo === 'M' ? 'Hombre' : 'Mujer'} • ` : ''}
-              {cliente.peso_actual || 'Sin peso'} • {cliente.altura || 'Sin altura'}
+              {cliente.edad ? `${cliente.edad} años` : ''}
+              {cliente.sexo ? ` • ${cliente.sexo === 'M' ? 'Hombre' : cliente.sexo === 'F' ? 'Mujer' : 'Otro'}` : ''}
+              {cliente.peso_actual ? ` • ${cliente.peso_actual}kg` : ''}
+              {cliente.altura ? ` • ${cliente.altura}cm` : ''}
             </Text>
             {cliente.objetivo && (
               <Text style={styles.clientObjective}>🎯 {cliente.objetivo}</Text>
@@ -356,29 +338,30 @@ export default function ClientDetail() {
         )}
       </View>
 
-      {/* Tabs de navegación */}
+      <View style={styles.meetButtonContainer}>
+        <TouchableOpacity 
+          style={styles.botonMeet}
+          onPress={handleCreateMeetSession}
+        >
+          <Text style={styles.botonMeetTexto}>📅 Agendar Google Meet</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.tabsContainer}>
         <TouchableOpacity 
           style={[styles.tab, activeTab === 'progreso' && styles.activeTab]}
           onPress={() => setActiveTab('progreso')}
         >
           <Text style={[styles.tabText, activeTab === 'progreso' && styles.activeTabText]}>
-            📈 Progreso
+            Progreso
           </Text>
         </TouchableOpacity>
         <TouchableOpacity 
           style={[styles.tab, activeTab === 'wellness' && styles.activeTab]}
           onPress={() => setActiveTab('wellness')}
         >
-
-        <TouchableOpacity 
-            style={styles.botonMeet}
-            onPress={() => navigation.navigate('CrearSesionMeet', { cliente: clienteData })}
-            ><Text style={styles.botonMeetTexto}>Agendar Google Meet</Text>
-            </TouchableOpacity>
-
           <Text style={[styles.tabText, activeTab === 'wellness' && styles.activeTabText]}>
-            🧘 Wellness
+            Wellness
           </Text>
         </TouchableOpacity>
         <TouchableOpacity 
@@ -386,12 +369,11 @@ export default function ClientDetail() {
           onPress={() => setActiveTab('rutina')}
         >
           <Text style={[styles.tabText, activeTab === 'rutina' && styles.activeTabText]}>
-            💪 Rutina
+            Rutina
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Contenido de las tabs */}
       <View style={styles.tabContent}>
         {activeTab === 'progreso' && (
           <View style={styles.progressSection}>
@@ -420,14 +402,13 @@ export default function ClientDetail() {
               </View>
             </View>
 
-            {/* Pesos Máximos */}
             {progresoData?.pesos_maximos && progresoData.pesos_maximos.length > 0 && (
               <View style={styles.pesosMaximosSection}>
-                <Text style={styles.sectionTitle}>🏆 Pesos Máximos (1RM)</Text>
+                <Text style={styles.sectionTitle}>🏆 Pesos Máximos</Text>
                 <View style={styles.pesosGrid}>
                   {progresoData.pesos_maximos.slice(0, 6).map((ejercicio, index) => (
                     <View key={index} style={styles.pesoCard}>
-                      <Text style={styles.pesoEjercicio}>{ejercicio.nombre_ejercicio}</Text>
+                      <Text style={styles.pesoEjercicio}>Ejercicio {ejercicio.id_ejercicio}</Text>
                       <Text style={styles.pesoMaximo}>{ejercicio.peso_maximo}kg</Text>
                       <Text style={styles.pesoFecha}>
                         {formatFecha(ejercicio.fecha_ultimo)}
@@ -438,7 +419,6 @@ export default function ClientDetail() {
               </View>
             )}
 
-            {/* Actividad Reciente - Datos REALES */}
             <View style={styles.recentActivity}>
               <Text style={styles.sectionTitle}>
                 {progresoData?.ejercicios_recientes?.length > 0 ? 'Actividad Reciente' : 'Sin Actividad Reciente'}
@@ -447,7 +427,7 @@ export default function ClientDetail() {
               {progresoData?.ejercicios_recientes?.length > 0 ? (
                 progresoData.ejercicios_recientes.map((ejercicio, index) => (
                   <View key={index} style={styles.activityItem}>
-                    <Text style={styles.activityExercise}>{ejercicio.nombre_ejercicio}</Text>
+                    <Text style={styles.activityExercise}>Ejercicio {ejercicio.id_ejercicio}</Text>
                     <Text style={styles.activityDetail}>
                       {ejercicio.peso_utilizado} × {ejercicio.reps_logradas} reps • {formatFecha(ejercicio.fecha)}
                     </Text>
@@ -568,7 +548,6 @@ export default function ClientDetail() {
                   </Text>
                 )}
                 
-                {/* Mostrar algunos ejercicios */}
                 {rutinaData.rutina?.ejercicios?.slice(0, 3).map((ejercicio, index) => (
                   <View key={index} style={styles.ejercicioPreview}>
                     <Text style={styles.ejercicioNombre}>{ejercicio.nombre}</Text>
@@ -662,7 +641,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   clientName: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: colors.text,
   },
@@ -691,20 +670,24 @@ const styles = StyleSheet.create({
   statsOverview: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 10,
+    marginTop: 15,
+    paddingHorizontal: 10,
   },
   statItem: {
     alignItems: 'center',
+    flex: 1,
+    minWidth: 70,
   },
   statNumber: {
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.primary,
+    marginBottom: 4,
   },
   statLabel: {
     fontSize: 12,
     color: colors.gray,
-    marginTop: 2,
+    textAlign: 'center',
   },
   estadoBadge: {
     fontSize: 10,
@@ -722,6 +705,24 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontStyle: 'italic',
   },
+  meetButtonContainer: {
+    backgroundColor: colors.white,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  botonMeet: {
+    backgroundColor: colors.success,
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  botonMeetTexto: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
   tabsContainer: {
     flexDirection: 'row',
     backgroundColor: colors.white,
@@ -730,8 +731,10 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    padding: 15,
+    paddingVertical: 15,
+    paddingHorizontal: 5,
     alignItems: 'center',
+    minHeight: 50,
   },
   activeTab: {
     borderBottomWidth: 2,
@@ -740,6 +743,8 @@ const styles = StyleSheet.create({
   tabText: {
     color: colors.gray,
     fontWeight: '500',
+    fontSize: 14,
+    textAlign: 'center',
   },
   activeTabText: {
     color: colors.primary,
@@ -759,6 +764,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginBottom: 20,
+    gap: 10,
   },
   statCard: {
     width: '48%',
@@ -982,17 +988,4 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 10,
   },
-  botonMeet: {
-  backgroundColor: colors.active,
-  padding: 15,
-  borderRadius: 8,
-  alignItems: 'center',
-  margin: 16,
-  marginTop: 8,
-},
-botonMeetTexto: {
-  color: colors.card,
-  fontSize: 16,
-  fontWeight: 'bold',
-},
 });

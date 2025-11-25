@@ -5,17 +5,16 @@ import { ActivityIndicator, Text, View } from 'react-native';
 
 export default function CoachLayout() {
   const router = useRouter();
-
   const [loading, setLoading] = useState(true);
   const [allow, setAllow] = useState(false);
 
   const checkAuth = async () => {
     try {
       setLoading(true);
-
       const token = await AsyncStorage.getItem('userToken');
       const userDataStr = await AsyncStorage.getItem('userData');
       const userRoleStored = await AsyncStorage.getItem('userRole');
+      
       if (!token) {
         setAllow(false);
         router.replace('/');
@@ -64,6 +63,13 @@ export default function CoachLayout() {
     >
       <Stack.Screen name="index" options={{ title: 'Dashboard Coach' }} />
       <Stack.Screen name="clients" options={{ headerShown: false }} />
+      <Stack.Screen 
+        name="crear-sesion-meet" 
+        options={{ 
+          title: 'Agendar Sesión Meet',
+          presentation: 'modal' 
+        }} 
+      />
     </Stack>
   );
 }

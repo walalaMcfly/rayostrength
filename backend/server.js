@@ -1634,14 +1634,14 @@ app.get('/api/meet/sesiones-usuario', authenticateToken, async (req, res) => {
 
     const userId = req.user.userId;
 
-    const [sesiones] = await pool.execute(
-      `SELECT SesionesMeet.*, Coach.nombre as coach_nombre, Coach.apellido as coach_apellido 
-       FROM SesionesMeet 
-       JOIN Coach ON SesionesMeet.id_coach = Coach.id_coach
-       WHERE SesionesMeet.id_usuario = ? AND SesionesMeet.estado = 'programada'
-       ORDER BY SesionesMeet.fecha_sesion ASC`,
-      [userId]
-    );
+   const [sesiones] = await pool.execute(
+    `SELECT sm.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
+    FROM SesionesMeet sm 
+    JOIN Coach c ON sm.id_coach = c.id_coach
+    WHERE sm.id_usuario = ? AND sm.estado = 'programada'
+    ORDER BY sm.fecha_sesion ASC`,
+  [userId]
+);
 
     res.json({
       success: true,
@@ -1691,6 +1691,48 @@ app.get('/api/meet/sesiones-coach', authenticateToken, async (req, res) => {
   }
 });
 
+app.post('/api/meet/completar-sesion', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'coach') {
+      return res.status(403).json({
+        success: false,
+        message: 'Solo los coaches pueden completar sesiones'
+      });
+    }
+
+    const { idSesion } = req.body;
+    const idCoach = req.user.coachId;
+
+    const [sesiones] = await pool.execute(
+      'SELECT id_sesion FROM SesionesMeet WHERE id_sesion = ? AND id_coach = ?',
+      [idSesion, idCoach]
+    );
+
+    if (sesiones.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Sesión no encontrada'
+      });
+    }
+
+    await pool.execute(
+      'UPDATE SesionesMeet SET estado = "completada" WHERE id_sesion = ?',
+      [idSesion]
+    );
+
+    res.json({
+      success: true,
+      message: 'Sesión marcada como completada'
+    });
+
+  } catch (error) {
+    console.error('Error completando sesión:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
 
 //Debug temporal 
 
