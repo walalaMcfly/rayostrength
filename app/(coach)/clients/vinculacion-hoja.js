@@ -38,11 +38,11 @@ export default function VinculacionHojaScreen() {
       const result = await response.json();
       
       if (result.success) {
-        Alert.alert('✅ Éxito', 'Hoja vinculada correctamente', [
+        Alert.alert(' Éxito', 'Hoja vinculada correctamente', [
           { text: 'OK', onPress: () => router.back() }
         ]);
       } else {
-        Alert.alert('❌ Error', result.message || 'Error al vincular la hoja');
+        Alert.alert('Error', result.message || 'Error al vincular la hoja');
       }
     } catch (error) {
       console.error('Error vinculando hoja:', error);

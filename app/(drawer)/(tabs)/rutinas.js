@@ -52,75 +52,55 @@ export default function RutinasScreen() {
     }
   }, [userToken]);
 
-  const cargarRutinaPersonalizada = async () => {
-    try {
-      setLoading(true);
-      const token = await AsyncStorage.getItem('userToken');
-      const user = JSON.parse(await AsyncStorage.getItem('userData'));
+const cargarRutinaPersonalizada = async () => {
+  try {
+    setLoading(true);
+    const token = await AsyncStorage.getItem('userToken');
+    const user = JSON.parse(await AsyncStorage.getItem('userData'));
 
-      console.log('🔄 Cargando rutina para usuario:', user.id_usuario);
+    const response = await fetch(`${BASE_URL}/api/rutinas-personalizadas/cliente/${user.id_usuario}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
-      const response = await fetch(`${BASE_URL}/api/rutinas-personalizadas/cliente/${user.id_usuario}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      console.log('📨 Status de respuesta:', response.status);
-
-      if (response.status === 401) {
-        throw new Error('Token inválido o expirado');
-      }
-
-      if (!response.ok) {
-        throw new Error(`Error HTTP: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('📨 Respuesta completa del backend:', result);
-
-      if (result.success !== false) {
-        let ejercicios = [];
-        
-        if (result.personalizada) {
-
-          console.log('✅ Rutina personalizada detectada');
-          ejercicios = result.rutina?.ejercicios || [];
-          console.log('📊 Ejercicios personalizados:', ejercicios.length);
-        } else {
-
-          console.log('ℹ️ Rutina general detectada');
-          ejercicios = result.rutina || [];
-          console.log('📊 Ejercicios generales:', ejercicios.length);
-        }
-        setRutina({
-          ...result,
-          ejercicios: ejercicios,
-          esPersonalizada: result.personalizada || false
-        });
-
-        console.log('✅ Rutina cargada correctamente. Ejercicios:', ejercicios.length);
-        
-      } else {
-        console.error('❌ Error en respuesta del servidor:', result.message);
-        Alert.alert('Error', result.message || 'Error al cargar rutinas');
-      }
-    } catch (error) {
-      console.error('❌ Error cargando rutina:', error);
-      
-      if (error.message.includes('Token') || error.message.includes('401')) {
-        Alert.alert('Sesión expirada', 'Por favor inicia sesión nuevamente');
-        await AsyncStorage.removeItem('userToken');
-        router.replace('/');
-      } else {
-        Alert.alert('Error', 'No se pudieron cargar las rutinas: ' + error.message);
-      }
-    } finally {
-      setLoading(false);
+    if (response.status === 401) {
+      throw new Error('Token inválido o expirado');
     }
-  };
+
+    if (!response.ok) {
+      throw new Error(`Error HTTP: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    if (result.success !== false) {
+      setRutina({
+        personalizada: result.personalizada || false,
+        hojaVinculada: result.hojaVinculada || false,
+        coach: result.coach || '',
+        ejercicios: result.ejercicios || [],
+        message: result.message || ''
+      });
+    } else {
+      Alert.alert('Error', result.message || 'Error al cargar rutinas');
+    }
+  } catch (error) {
+    console.error('Error cargando rutina:', error);
+    
+    if (error.message.includes('Token') || error.message.includes('401')) {
+      Alert.alert('Sesión expirada', 'Por favor inicia sesión nuevamente');
+      await AsyncStorage.removeItem('userToken');
+      router.replace('/');
+    } else {
+      Alert.alert('Error', 'No se pudieron cargar las rutinas: ' + error.message);
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
  const onRefresh = async () => {
   try {
@@ -139,9 +119,9 @@ export default function RutinasScreen() {
     // Recargar datos
     await cargarRutinaPersonalizada();
     
-    console.log('✅ Sincronización completada');
+    console.log(' Sincronización completada');
   } catch (error) {
-    console.error('❌ Error en sincronización:', error);
+    console.error(' Error en sincronización:', error);
   } finally {
     setRefreshing(false);
   }
@@ -201,9 +181,9 @@ export default function RutinasScreen() {
         }
       }));
 
-      Alert.alert('✅ Éxito', 'Datos guardados correctamente');
+      Alert.alert('Éxito', 'Datos guardados correctamente');
     } catch (error) {
-      console.error('❌ Error guardarDatosReales:', error);
+      console.error(' Error guardarDatosReales:', error);
       Alert.alert(
         'Error al guardar',
         error.message || 'No se pudieron guardar los datos. Verifica tu conexión.'
@@ -291,39 +271,39 @@ export default function RutinasScreen() {
     }
   };
 
-  const registrarSesionCompletada = async (ejerciciosCompletados) => {
-    try {
-      const volumenTotal = rutina.ejercicios.reduce((total, ejercicio) => {
-        const peso = parseFloat(realesData[ejercicio.id]?.pesoReal || ejercicio.pesoSugerido) || 0;
-        const series = ejercicio.series || 0;
-        const reps = parseFloat(realesData[ejercicio.id]?.repsReales || ejercicio.repeticiones) || 0;
-        return total + (peso * series * reps);
-      }, 0);
+const registrarSesionCompletada = async (ejerciciosCompletados) => {
+  try {
+    const volumenTotal = rutina.ejercicios.reduce((total, ejercicio) => {
+      const peso = parseFloat(realesData[ejercicio.id]?.pesoReal || '0') || 0;
+      const series = ejercicio.series || 0;
+      const reps = parseFloat(realesData[ejercicio.id]?.repsReales || '0') || 0;
+      return total + (peso * series * reps);
+    }, 0);
 
-      await fetch(`${BASE_URL}/api/progreso/registrar-sesion`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${userToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          semana_rutina: rutina.esPersonalizada ? 'Personalizada' : 'General',
-          total_ejercicios: rutina.ejercicios.length,
-          ejercicios_completados: ejerciciosCompletados,
-          duracion_total_minutos: 60,
-          volumen_total: volumenTotal,
-          notas_usuario: 'Rutina completada exitosamente con datos reales'
-        }),
-      });
+    await fetch(`${BASE_URL}/api/progreso/registrar-sesion`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${userToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        semana_rutina: 'Personalizada',
+        total_ejercicios: rutina.ejercicios.length,
+        ejercicios_completados: ejerciciosCompletados,
+        duracion_total_minutos: 60,
+        volumen_total: volumenTotal,
+        notas_usuario: 'Rutina personalizada completada'
+      }),
+    });
 
-      Alert.alert("🎉 ¡Rutina Completada!", "Tu progreso ha sido guardado correctamente");
-      setShowModalCompletar(false);
+    Alert.alert("Rutina Completada", "Tu progreso ha sido guardado correctamente");
+    setShowModalCompletar(false);
 
-    } catch (error) {
-      console.error('Error registrando sesión completada:', error);
-      Alert.alert("Error", "No se pudo guardar la sesión completada");
-    }
-  };
+  } catch (error) {
+    console.error('Error registrando sesión completada:', error);
+    Alert.alert("Error", "No se pudo guardar la sesión completada");
+  }
+};
 
   const guardarNotas = async (ejercicioId, texto) => {
     const nuevasNotas = { ...notasCliente, [ejercicioId]: texto };
@@ -450,25 +430,24 @@ export default function RutinasScreen() {
   return (
     <View style={styles.container}>
       {/* ✅ HEADER COMPACTO - SOLO INFO DEL COACH Y FECHA */}
-      {rutina?.esPersonalizada ? (
-        <View style={styles.headerCompact}>
-          <View style={styles.infoContainer}>
-            <Text style={styles.coachText}>Creada por: {rutina.coach}</Text>
-            <Text style={styles.syncText}>
-              Última actualización: {new Date(rutina.ultimaSincronizacion).toLocaleDateString()}
-            </Text>
+      {rutina?.personalizada ? (
+          <View style={styles.headerCompact}>
+            <View style={styles.infoContainer}>
+              <Text style={styles.coachText}>Creada por: {rutina.coach}</Text>
+              <Text style={styles.syncText}>
+                Última actualización: {new Date(rutina.ultimaSincronizacion).toLocaleDateString()}
+              </Text>
+            </View>
           </View>
-        </View>
-      ) : (
-        <View style={styles.headerCompact}>
-          <View style={styles.infoContainer}>
-            <Text style={styles.infoText}>
-              Tu coach aún no te ha asignado una rutina personalizada.
-            </Text>
+        ) : (
+          <View style={styles.headerCompact}>
+            <View style={styles.infoContainer}>
+              <Text style={styles.infoText}>
+                {rutina?.message || 'Tu coach aún no te ha asignado una rutina personalizada.'}
+              </Text>
+            </View>
           </View>
-        </View>
-      )}
-
+        )}
       <FlatList
         data={rutina?.ejercicios || []}
         keyExtractor={(item, index) => item.id || `ej-${index}`}
@@ -478,15 +457,17 @@ export default function RutinasScreen() {
         onRefresh={onRefresh} 
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No hay ejercicios disponibles</Text>
-            <Text style={styles.emptySubtext}>
-              {rutina?.esPersonalizada 
-                ? 'Tu coach aún no ha agregado ejercicios a tu rutina.'
-                : 'No hay rutina disponible en este momento.'
+            <Text style={styles.emptyText}>
+              {rutina?.personalizada === false 
+                ? 'No tienes rutina personalizada' 
+                : 'No hay ejercicios disponibles'
               }
             </Text>
+            <Text style={styles.emptySubtext}>
+              {rutina?.message || 'Contacta a tu coach para que te asigne una rutina personalizada.'}
+            </Text>
           </View>
-        }
+}
       />
 
       {rutina?.ejercicios && rutina.ejercicios.length > 0 && (

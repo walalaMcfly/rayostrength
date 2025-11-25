@@ -587,7 +587,7 @@ function transformSheetDataToRutinas(sheetData) {
   });
 }
 
-app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
+/*app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
   try {
     const { semana } = req.params;
     const data = await googleSheets.readSheet(semana);
@@ -605,7 +605,7 @@ app.get('/api/rutinas/:semana', authenticateToken, async (req, res) => {
       message: 'Error al obtener las rutinas'
     });
   }
-});
+});*/
 
 app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
   try {
@@ -1104,14 +1104,10 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
       if (hojas.length > 0) {
         const sheetId = hojas[0].id_hoja_google;
         
-        console.log('Leyendo directamente de Google Sheets para cliente:', idCliente);
-        
         try {
           const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
           const rutinaProcesada = procesarRutinaColumnasFijas(rawData);
           
-          console.log('Datos actualizados desde Google Sheets. Ejercicios:', rutinaProcesada.ejercicios.length);
-
           const datosRutinaJSON = JSON.stringify(rutinaProcesada);
           await pool.execute(
             `INSERT INTO CacheRutinas (id_cliente, datos_rutina) 
@@ -1123,12 +1119,13 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
           );
 
           return res.json({
+            success: true,
             personalizada: true,
             coach: `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}`,
             hojaVinculada: true,
             ultimaSincronizacion: new Date().toISOString(),
-            rutina: rutinaProcesada,
-            fuente: 'google_sheets_directo'
+            ejercicios: rutinaProcesada.ejercicios,
+            metadata: rutinaProcesada.metadata
           });
 
         } catch (googleError) {
@@ -1142,8 +1139,8 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
           );
 
           if (cache.length > 0) {
-            let rutinaData;
             try {
+              let rutinaData;
               if (typeof cache[0].datos_rutina === 'string') {
                 rutinaData = JSON.parse(cache[0].datos_rutina);
               } else {
@@ -1151,40 +1148,34 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
               }
               
               return res.json({
+                success: true,
                 personalizada: true,
                 coach: `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}`,
                 hojaVinculada: true,
                 ultimaSincronizacion: hojas[0].ultima_sincronizacion,
-                rutina: rutinaData,
-                fuente: 'cache_fallback'
+                ejercicios: rutinaData.ejercicios,
+                metadata: rutinaData.metadata
               });
             } catch (parseError) {
-              console.error('Error con cache también:', parseError);
+              console.error('Error parseando cache:', parseError);
             }
           }
+          
+          return res.status(500).json({
+            success: false,
+            message: 'Error cargando rutina personalizada. Contacta a tu coach.'
+          });
         }
       }
 
-      console.log('Usando rutina general (fallback)');
-      try {
-        const data = await googleSheets.readSheet('Rayostrenght');
-        const rutinaGeneral = transformSheetDataToRutinas(data);
+      res.json({
+        success: true,
+        personalizada: false,
+        hojaVinculada: false,
+        ejercicios: [],
+        message: 'Aún no tienes una rutina personalizada asignada. Contacta a tu coach.'
+      });
 
-        res.json({
-          personalizada: false,
-          hojaVinculada: false,
-          rutina: rutinaGeneral,
-          fuente: 'rutina_general'
-        });
-      } catch (sheetError) {
-        console.error('Error con rutina general:', sheetError);
-        res.json({
-          personalizada: false,
-          hojaVinculada: false,
-          rutina: [],
-          fuente: 'vacio'
-        });
-      }
     } else {
       res.status(403).json({
         success: false,
