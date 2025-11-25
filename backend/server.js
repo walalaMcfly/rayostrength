@@ -1051,25 +1051,39 @@ function procesarRutinaColumnasFijas(rawData) {
   const ejercicios = [];
   
   console.log('Procesando con columnas fijas...');
-  console.log('Total de filas:', rawData.length);
-
-  let startRow = 1;
-  for (let i = 1; i < Math.min(10, rawData.length); i++) {
+  console.log('Total de filas crudas:', rawData.length);
+  let startRow = -1;
+  for (let i = 0; i < Math.min(50, rawData.length); i++) {
     const row = rawData[i];
-    if (row && row.length >= 4) {
-      const grupoMuscular = (row[2] || '').toString().trim();
-      const nombreEjercicio = (row[3] || '').toString().trim();
-      
-      if (grupoMuscular && nombreEjercicio && 
-          !grupoMuscular.toLowerCase().includes('grupo') &&
-          !nombreEjercicio.toLowerCase().includes('ejercicio')) {
+    if (row && row.length >= 3) {
+      const grupoMuscular = (row[2] || '').toString().trim().toUpperCase();
+      if (grupoMuscular.includes('EXERCISES') && grupoMuscular.length < 50) {
         startRow = i;
-        console.log('Datos empiezan en fila:', startRow + 1);
+        console.log('Encontrado inicio de ejercicios en fila:', startRow + 1, '-', grupoMuscular);
         break;
       }
     }
   }
 
+  if (startRow === -1) {
+    console.log('No se encontro el inicio de ejercicios, buscando patron alternativo...');
+    for (let i = 0; i < Math.min(50, rawData.length); i++) {
+      const row = rawData[i];
+      if (row && row.length >= 3) {
+        const ejercicio = (row[3] || '').toString().trim();
+        if (ejercicio && ejercicio.length > 2 && !ejercicio.includes('**')) {
+          startRow = i;
+          console.log('Encontrado inicio por ejercicio en fila:', startRow + 1, '-', ejercicio);
+          break;
+        }
+      }
+    }
+  }
+
+  if (startRow === -1) {
+    console.log('No se encontraron ejercicios en la hoja');
+    return { ejercicios: [], metadata: { totalEjercicios: 0 } };
+  }
   for (let i = startRow; i < rawData.length; i++) {
     const row = rawData[i];
     
@@ -1082,23 +1096,24 @@ function procesarRutinaColumnasFijas(rawData) {
     const reps = safeSQLValue(row[6]);
     const rir = safeSQLValue(row[7]);
     const descanso = safeSQLValue(row[8]);
-
     if (!nombreEjercicio || nombreEjercicio.toString().trim() === '') continue;
 
     const nombreLimpio = nombreEjercicio.toString().trim();
-    
     if (nombreLimpio.toUpperCase().includes('EXERCISE') || 
         nombreLimpio.includes('**') ||
         nombreLimpio.toLowerCase().includes('ejercicio') ||
-        nombreLimpio === '') {
+        nombreLimpio === '' ||
+        nombreLimpio.length < 2) {
       continue;
     }
+    const seriesNum = parseInt(series) || 0;
+    if (seriesNum === 0) continue;
 
     const ejercicio = {
       grupoMuscular: limpiarGrupoMuscular(grupoMuscular) || 'General',
       nombre: nombreLimpio,
       video: limpiarTexto(video) || '',
-      series: parseInt(series) || 0,
+      series: seriesNum,
       repeticiones: limpiarTexto(reps) || '',
       rir: extraerRIRSimple(rir),
       descanso: limpiarTexto(descanso) || '',
@@ -1127,12 +1142,16 @@ function limpiarGrupoMuscular(texto) {
   if (!texto) return 'General';
   const textoLimpio = texto.toString().trim();
   if (textoLimpio === '') return 'General';
-  return textoLimpio.charAt(0).toUpperCase() + textoLimpio.slice(1).toLowerCase();
+  const limpio = textoLimpio.replace(/"/g, '').replace(/\*\*/g, '').trim();
+  if (limpio === '') return 'General';
+  
+  return limpio.charAt(0).toUpperCase() + limpio.slice(1).toLowerCase();
 }
+
 
 function limpiarTexto(texto) {
   if (!texto) return '';
-  return texto.toString().trim();
+  return texto.toString().replace(/"/g, '').trim();
 }
 
 function extraerRIRSimple(texto) {
@@ -1883,6 +1902,41 @@ app.get('/api/debug/hojas-cliente/:idCliente', async (req, res) => {
 
   } catch (error) {
     console.error('Error en debug:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+//temporal 
+
+app.get('/api/debug/hoja-cruda/:idCliente', authenticateToken, async (req, res) => {
+  try {
+    const { idCliente } = req.params;
+    
+    const [hojas] = await pool.execute(
+      `SELECT id_hoja_google FROM HojasClientes WHERE id_cliente = ? AND activa = TRUE`,
+      [idCliente]
+    );
+
+    if (hojas.length === 0) {
+      return res.json({ error: 'No hay hoja vinculada' });
+    }
+
+    const sheetId = hojas[0].id_hoja_google;
+    const rawData = await googleSheets.readAnySheet(sheetId, '4 semanas');
+    const preview = rawData.slice(0, 20).map((row, index) => ({
+      fila: index + 1,
+      datos: row
+    }));
+
+    res.json({
+      sheetId: sheetId,
+      totalFilas: rawData.length,
+      preview: preview
+    });
+
+  } catch (error) {
+    console.error('Error en debug hoja cruda:', error);
     res.status(500).json({ error: error.message });
   }
 });
