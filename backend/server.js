@@ -2093,4 +2093,52 @@ app.post('/api/debug/test-password-direct', async (req, res) => {
   }
 });
 
+
+//Endpoint para cambiar la contraseña al admin temporal
+app.post('/api/debug/update-admin-password', async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+    
+    console.log('Actualizando contraseña para:', email);
+    
+    // Generar nuevo hash
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    console.log('Nuevo hash generado:', hashedPassword);
+    
+    // Actualizar en BD
+    const [result] = await pool.execute(
+      'UPDATE Coach SET contraseña = ? WHERE email = ?',
+      [hashedPassword, email]
+    );
+    
+    console.log('Filas actualizadas:', result.affectedRows);
+    
+    // Verificar que se actualizó correctamente
+    const [coaches] = await pool.execute(
+      'SELECT email, contraseña FROM Coach WHERE email = ?',
+      [email]
+    );
+    
+    const coach = coaches[0];
+    const verifyMatch = await bcrypt.compare(newPassword, coach.contraseña);
+    
+    res.json({
+      success: true,
+      message: 'Contraseña actualizada',
+      verified: verifyMatch,
+      credentials: {
+        email: email,
+        password: newPassword
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error actualizando contraseña:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 startServer();
