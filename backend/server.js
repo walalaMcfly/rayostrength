@@ -2014,4 +2014,86 @@ const startServer = async () => {
   }
 };
 
+// endpoint para ver la password
+
+app.post('/api/debug/test-password-direct', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    console.log('=== DIAGNÓSTICO COMPLETO ===');
+    console.log('Email recibido:', email);
+    console.log('Password recibido:', password);
+    console.log('Longitud password:', password.length);
+    
+    // 1. Buscar el coach
+    const [coaches] = await pool.execute(
+      'SELECT id_coach, email, contraseña, rol FROM Coach WHERE email = ?',
+      [email]
+    );
+    
+    console.log('Coaches encontrados:', coaches.length);
+    
+    if (coaches.length === 0) {
+      return res.json({
+        success: false,
+        error: 'Coach no encontrado'
+      });
+    }
+    
+    const coach = coaches[0];
+    console.log('Coach encontrado:', coach.email);
+    console.log('Hash en BD:', coach.contraseña);
+    console.log('Longitud hash:', coach.contraseña.length);
+    console.log('Rol:', coach.rol);
+    
+    // 2. Verificar caracteres especiales
+    console.log('Caracteres en password:');
+    for (let i = 0; i < password.length; i++) {
+      console.log(`Pos ${i}: '${password[i]}' - Código: ${password.charCodeAt(i)}`);
+    }
+    
+    // 3. Probar bcrypt.compare
+    console.log('Probando bcrypt.compare...');
+    const isMatch = await bcrypt.compare(password, coach.contraseña);
+    console.log('Resultado bcrypt.compare:', isMatch);
+    
+    // 4. Probar con diferentes variaciones
+    const testVariations = [
+      password,
+      password + ' ', // con espacio al final
+      ' ' + password, // con espacio al inicio
+      password.trim(), // sin espacios
+      password.normalize(), // normalizado
+    ];
+    
+    console.log('Probando variaciones:');
+    for (let variation of testVariations) {
+      const variationMatch = await bcrypt.compare(variation, coach.contraseña);
+      console.log(`Variación "${variation}": ${variationMatch}`);
+    }
+    
+    res.json({
+      success: true,
+      diagnostic: {
+        coachExists: true,
+        email: coach.email,
+        rol: coach.rol,
+        hash: coach.contraseña,
+        hashLength: coach.contraseña.length,
+        passwordTested: password,
+        passwordLength: password.length,
+        bcryptMatch: isMatch,
+        characterCodes: Array.from(password).map(char => char.charCodeAt(0))
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error en diagnóstico:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 startServer();

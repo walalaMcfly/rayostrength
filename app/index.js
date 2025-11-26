@@ -29,107 +29,66 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
-
-
-// Función de login modificada temporalmente
-const login = async (email, password) => {
-  try {
-    let endpoint = '/api/auth/login';
-    if (email === 'carlos.coach@rayostrength.com') {
-      endpoint = '/api/auth/login-coach-temp';
-    }
-
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: email,
-        contraseña: password
-      })
-    });
-
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Error en login');
-    }
-
-    return data;
-  } catch (error) {
-    console.error('Error en login:', error);
-    throw error;
-  }
-};
-
-const handleLogin = async () => {
-  try {
-    if (!form.email || !form.password) {
-      Alert.alert("Error", "Por favor completa todos los campos");
-      return;
-    }
-
-    setLoading(true);
-    console.log(' Iniciando login...');
-    
-    const response = await fetch(`${API_URL}/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: form.email,
-        contraseña: form.password
-      }),
-    });
-
-    console.log('📨 Status de respuesta:', response.status);
-    
-    const data = await response.json();
-    console.log('📨 Respuesta completa del login:', data);
-
-    if (data.success) {
-      await AsyncStorage.setItem('userToken', data.token);
-      await AsyncStorage.setItem('userData', JSON.stringify(data.user));
-
-
-    if (data.success) {
-  await AsyncStorage.setItem('userToken', data.token);
-  await AsyncStorage.setItem('userData', JSON.stringify(data.user));
-  await AsyncStorage.setItem('userRole', data.user.role); 
-  
-  console.log('✅ Login exitoso. Rol:', data.user.role);
-  
-   if (data.user.role === 'admin') {
-    router.replace('/(admin)');
-  } else if (data.user.role === 'coach') {
-    router.replace('/(coach)');
-  } else {
-    router.replace('/(client)/(drawer)/(tabs)/rutinas'); 
-  }
-}
-      
-      console.log('Login exitoso. Rol:', data.user.role);
-      if (data.user.role === 'coach') {
-        console.log(' Redirigiendo a área de coach');
-        router.replace('/(coach)');
-      } else {
-        console.log('👤 Redirigiendo a área de cliente');
-        router.replace('/(drawer)/(tabs)/rutinas');
+  const handleLogin = async () => {
+    try {
+      if (!form.email || !form.password) {
+        Alert.alert("Error", "Por favor completa todos los campos");
+        return;
       }
-    } else {
-      Alert.alert("Error", data.message || "Credenciales incorrectas");
-    }
-  } catch (error) {
-    console.error(' Error completo en login:', error);
-    Alert.alert("Error", "No se pudo conectar al servidor: " + error.message);
-  } finally {
-    setLoading(false);
-  }
-};
 
-  
+      setLoading(true);
+      console.log(' Iniciando login...', { email: form.email });
+      
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: form.email,
+          contraseña: form.password
+        }),
+      });
+
+      console.log('📨 Status de respuesta:', response.status);
+      
+      const data = await response.json();
+      console.log('📨 Respuesta completa del login:', data);
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Error en el servidor');
+      }
+
+      if (data.success) {
+        await AsyncStorage.setItem('userToken', data.token);
+        await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+        await AsyncStorage.setItem('userRole', data.user.role); 
+        
+        console.log(' Login exitoso. Rol:', data.user.role);
+        console.log('👤 Datos usuario:', data.user);
+        
+        // Redirección basada en el rol
+        if (data.user.role === 'admin') {
+          console.log('🛡️ Redirigiendo a panel de administración');
+          router.replace('/(admin)');
+        } else if (data.user.role === 'coach') {
+          console.log('🏋️ Redirigiendo a área de coach');
+          router.replace('/(coach)');
+        } else {
+          console.log('👤 Redirigiendo a área de cliente');
+          router.replace('/(drawer)/(tabs)/rutinas');
+        }
+      } else {
+        Alert.alert("Error", data.message || "Credenciales incorrectas");
+      }
+    } catch (error) {
+      console.error('❌Error completo en login:', error);
+      Alert.alert("Error", error.message || "No se pudo conectar al servidor");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleChange = (name, value) => {
     setForm(prev => ({
       ...prev,
@@ -151,6 +110,7 @@ const handleLogin = async () => {
 
         <View style={styles.loginBox}>
           <Text style={styles.title}>Iniciar Sesión</Text>
+          
           <TextInput
             style={styles.input}
             placeholder="Correo electrónico"
@@ -163,24 +123,24 @@ const handleLogin = async () => {
 
           <View style={styles.passwordContainer}>
             <TextInput
-             style={styles.passwordInput}
-                placeholder="Contraseña"
-                placeholderTextColor="#9ca3af"
-                secureTextEntry={!showPassword}
-                value={form.password}
-                onChangeText={(value) => handleChange('password', value)}
-              />
-              <TouchableOpacity 
-                style={styles.eyeButton}
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                <Ionicons
+              style={styles.passwordInput}
+              placeholder="Contraseña"
+              placeholderTextColor="#9ca3af"
+              secureTextEntry={!showPassword}
+              value={form.password}
+              onChangeText={(value) => handleChange('password', value)}
+            />
+            <TouchableOpacity 
+              style={styles.eyeButton}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <Ionicons
                 name={showPassword ? 'eye' : 'eye-off'}
                 size={22}
                 color="#9ca3af"
-                  />
-              </TouchableOpacity>
-            </View>
+              />
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity 
             style={[styles.button, loading && styles.buttonDisabled]} 
@@ -245,6 +205,24 @@ const styles = StyleSheet.create({
     borderColor: '#3a3a3a',
     marginBottom: 15,
   },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3a3a3a',
+    borderRadius: 8,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#3a3a3a',
+  },
+  passwordInput: {
+    flex: 1,
+    color: 'white',
+    padding: 15,
+    fontSize: 16,
+  },
+  eyeButton: {
+    padding: 15,
+  },
   button: {
     backgroundColor: '#fdeb4db7',
     padding: 15,
@@ -260,30 +238,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-
-  passwordContainer: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  backgroundColor: '#3a3a3a',
-  borderRadius: 8,
-  marginBottom: 15,
-  borderWidth: 1,
-  borderColor: '#3a3a3a',
-},
-passwordInput: {
-  flex: 1,
-  color: 'white',
-  padding: 15,
-  fontSize: 16,
-},
-eyeButton: {
-  padding: 15,
-},
-eyeIcon: {
-  fontSize: 16,
-  color: '#9ca3af',
-},
-
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
