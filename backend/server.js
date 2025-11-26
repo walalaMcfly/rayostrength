@@ -277,12 +277,16 @@ app.post('/api/auth/login', async (req, res) => {
     );
 
     if (coaches.length > 0) {
-        console.log('Coach encontrado');
-        user = coaches[0];
-        role = user.rol === 'admin' ? 'admin' : 'coach';
-            
+      console.log('Coach encontrado');
+      user = coaches[0];
+      
+      role = user.rol || 'coach'; 
+      
+      console.log('Rol en BD:', user.rol);
+      console.log('Rol asignado:', role);
       console.log('Hash en BD:', user.contraseña.substring(0, 20) + '...');
       console.log('Longitud hash:', user.contraseña.length);
+      
       console.log('Comparando contraseña...');
       const validPassword = await bcrypt.compare(contraseña, user.contraseña);
       console.log('Resultado comparación:', validPassword);
@@ -346,6 +350,7 @@ app.post('/api/auth/login', async (req, res) => {
     );
 
     console.log('LOGIN EXITOSO');
+    console.log('Token payload:', tokenPayload);
     console.log('=== FIN LOGIN ===');
 
     if (role === 'user') {
@@ -365,24 +370,24 @@ app.post('/api/auth/login', async (req, res) => {
           role: 'user'
         }
       });
-      } else {
-        res.json({
-          success: true,
-          message: 'Login exitoso',
-          token,
-          user: {
-            id_coach: user.id_coach,
-            nombre: user.nombre,
-            apellido: user.apellido,
-            email: user.email,
-            fecha_nacimiento: user.fecha_nacimiento,
-            sexo: user.sexo,
-            especialidad: user.especialidad,
-            experiencia: user.experiencia,
-            role: role
-          }
-        });
-      }
+    } else {
+      res.json({
+        success: true,
+        message: 'Login exitoso',
+        token,
+        user: {
+          id_coach: user.id_coach,
+          nombre: user.nombre,
+          apellido: user.apellido,
+          email: user.email,
+          fecha_nacimiento: user.fecha_nacimiento,
+          sexo: user.sexo,
+          especialidad: user.especialidad,
+          experiencia: user.experiencia,
+          role: role
+        }
+      });
+    }
 
   } catch (error) {
     console.error('ERROR EN LOGIN:', error);
