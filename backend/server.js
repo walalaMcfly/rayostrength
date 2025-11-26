@@ -3,7 +3,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
-
+const adminRoutes = require('./admin');
 const { pool, createTables, testConnection } = require('./config/database');
 const googleSheets = require('./config/googleSheets');
 
@@ -31,6 +31,8 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization','Accept']
 }));
+
+app.use('/api/admin', adminRoutes)
 
 app.use(express.json());
 
@@ -203,9 +205,15 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'El email ya está registrado'
-      });
-    }
 
+        
+      });
+      
+      
+
+      
+    }
+    
     const hashedPassword = await bcrypt.hash(contraseña, 10);
 
     const [result] = await pool.execute(
@@ -269,13 +277,12 @@ app.post('/api/auth/login', async (req, res) => {
     );
 
     if (coaches.length > 0) {
-      console.log('Coach encontrado');
-      user = coaches[0];
-      role = 'coach';
-      
+        console.log('Coach encontrado');
+        user = coaches[0];
+        role = user.rol === 'admin' ? 'admin' : 'coach';
+            
       console.log('Hash en BD:', user.contraseña.substring(0, 20) + '...');
       console.log('Longitud hash:', user.contraseña.length);
-
       console.log('Comparando contraseña...');
       const validPassword = await bcrypt.compare(contraseña, user.contraseña);
       console.log('Resultado comparación:', validPassword);
@@ -328,9 +335,9 @@ app.post('/api/auth/login', async (req, res) => {
       tokenPayload = { 
         coachId: user.id_coach,
         email: user.email, 
-        role: 'coach' 
+        role: role
       };
-    }
+    } 
 
     const token = jwt.sign(
       tokenPayload,
@@ -358,24 +365,24 @@ app.post('/api/auth/login', async (req, res) => {
           role: 'user'
         }
       });
-    } else {
-      res.json({
-        success: true,
-        message: 'Login exitoso',
-        token,
-        user: {
-          id_coach: user.id_coach,
-          nombre: user.nombre,
-          apellido: user.apellido,
-          email: user.email,
-          fecha_nacimiento: user.fecha_nacimiento,
-          sexo: user.sexo,
-          especialidad: user.especialidad,
-          experiencia: user.experiencia,
-          role: 'coach'
-        }
-      });
-    }
+      } else {
+        res.json({
+          success: true,
+          message: 'Login exitoso',
+          token,
+          user: {
+            id_coach: user.id_coach,
+            nombre: user.nombre,
+            apellido: user.apellido,
+            email: user.email,
+            fecha_nacimiento: user.fecha_nacimiento,
+            sexo: user.sexo,
+            especialidad: user.especialidad,
+            experiencia: user.experiencia,
+            role: role
+          }
+        });
+      }
 
   } catch (error) {
     console.error('ERROR EN LOGIN:', error);

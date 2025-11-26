@@ -101,11 +101,11 @@ const handleLogin = async () => {
   
   console.log('✅ Login exitoso. Rol:', data.user.role);
   
-  if (data.user.role === 'coach') {
-    console.log('👨‍💼 Redirigiendo a área de coach');
+   if (data.user.role === 'admin') {
+    router.replace('/(admin)');
+  } else if (data.user.role === 'coach') {
     router.replace('/(coach)');
   } else {
-    console.log('👤 Redirigiendo a área de cliente');
     router.replace('/(client)/(drawer)/(tabs)/rutinas'); 
   }
 }
