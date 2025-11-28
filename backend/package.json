@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "check-config": "node -e \"require('./config/environment'); console.log('✅ Configuration check passed');\""
+    "check-config": "node -e \"require('./config/environment'); console.log(' Configuration check passed');\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
