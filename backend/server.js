@@ -2393,4 +2393,17 @@ const startServer = async () => {
   }
 };
 
+
+
+app.get('/api/debug/sendgrid-status', (req, res) => {
+  res.json({
+    sendgrid_available: sendgridAvailable,
+    api_key_configured: !!process.env.SENDGRID_API_KEY,
+    from_email: process.env.FROM_EMAIL,
+    message: sendgridAvailable ? 
+      'SendGrid activo - Emails funcionando' : 
+      'SendGrid no disponible'
+  });
+});
+
 startServer();
