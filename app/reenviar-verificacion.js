@@ -69,7 +69,7 @@ export default function ReenviarVerificacion() {
         onPress={handleReenviar}
         disabled={cargando}
         style={{
-          backgroundColor: cargando ? '#ccc' : '#f5ea4bff',
+          backgroundColor: cargando ? '#ccc' : '#f5ea4bb9',
           padding: 15,
           borderRadius: 8,
           opacity: cargando ? 0.6 : 1,

@@ -2428,14 +2428,36 @@ app.post('/api/test-email', async (req, res) => {
   try {
     const { email } = req.body;
     
-    const result = await enviarEmailVerificacion(email, 'test-token-123');
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email es requerido'
+      });
+    }
+
+    console.log('=== TEST EMAIL INICIADO ===');
+    console.log('Email destino:', email);
+    console.log('SendGrid disponible:', sendgridAvailable);
+    console.log('API Key configurada:', !!process.env.SENDGRID_API_KEY);
     
+    const tokenTest = 'test-token-' + Date.now();
+    const result = await enviarEmailVerificacion(email, tokenTest);
+    
+    console.log('Resultado del envío:', result);
+    console.log('=== TEST EMAIL FINALIZADO ===');
+
     res.json({
       success: true,
       email_sent: result,
-      message: result ? 'Email enviado correctamente' : 'Error enviando email'
+      message: result ? 'Email enviado correctamente' : 'Error enviando email',
+      debug: {
+        sendgrid_available: sendgridAvailable,
+        api_key_configured: !!process.env.SENDGRID_API_KEY,
+        from_email: process.env.FROM_EMAIL
+      }
     });
   } catch (error) {
+    console.error('Error en test email:', error);
     res.status(500).json({
       success: false,
       error: error.message
