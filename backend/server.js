@@ -2465,4 +2465,14 @@ app.post('/api/test-email', async (req, res) => {
   }
 });
 
+app.get('/api/email-status', (req, res) => {
+  res.json({
+    sendgrid_available: sendgridAvailable,
+    api_key_configured: !!process.env.SENDGRID_API_KEY,
+    from_email: process.env.FROM_EMAIL,
+    frontend_url: process.env.FRONTEND_URL,
+    status: sendgridAvailable ? 'ACTIVE' : 'INACTIVE'
+  });
+});
+
 startServer();
