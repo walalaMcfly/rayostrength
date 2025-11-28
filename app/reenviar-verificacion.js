@@ -16,7 +16,7 @@ export default function ReenviarVerificacion() {
     setCargando(true);
     
     try {
-      const response = await fetch('http://localhost:8081/api/auth/reenviar-verificacion', {
+      const response = await fetch('https://rayostrength-production.up.railway.app/api/auth/reenviar-verificacion', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -27,10 +27,10 @@ export default function ReenviarVerificacion() {
       const data = await response.json();
 
       if (response.ok) {
-        Alert.alert('Éxito', data.mensaje);
+        Alert.alert('Éxito', data.message || 'Email de verificación reenviado');
         router.push('/');
       } else {
-        Alert.alert('Error', data.error);
+        Alert.alert('Error', data.message || data.error || 'Error al reenviar verificación');
       }
     } catch (error) {
       Alert.alert('Error', 'Error de conexión. Intenta nuevamente.');
@@ -69,7 +69,7 @@ export default function ReenviarVerificacion() {
         onPress={handleReenviar}
         disabled={cargando}
         style={{
-          backgroundColor: cargando ? '#ccc' : '#f5ea4bb9',
+          backgroundColor: cargando ? '#ccc' : '#007AFF',
           padding: 15,
           borderRadius: 8,
           opacity: cargando ? 0.6 : 1,

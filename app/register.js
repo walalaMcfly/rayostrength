@@ -36,9 +36,7 @@ export default function Register() {
   const [touched, setTouched] = useState({});
   const [loading, setLoading] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
-  
   const [showSexModal, setShowSexModal] = useState(false);
-
 
   const validateField = (name, value) => {
     switch (name) {
@@ -100,7 +98,6 @@ export default function Register() {
     return strength;
   };
 
-  
   const handleChange = (name, value) => {
     let formattedValue = value;
     if (name === "peso") {
@@ -144,7 +141,6 @@ export default function Register() {
     const error = validateField(name, form[name]);
     setErrors(prev => ({ ...prev, [name]: error }));
   };
-
 
   const handleSexSelect = (sex) => {
     handleChange('sexo', sex);
@@ -261,7 +257,6 @@ export default function Register() {
         />
 
         <View style={styles.registerBox}>
-          {/* Nombre */}
           <View style={styles.fieldContainer}>
             <TextInput
               style={[
@@ -282,7 +277,6 @@ export default function Register() {
             ) : null}
           </View>
 
-          {/* Apellido */}
           <View style={styles.fieldContainer}>
             <TextInput
               style={[
@@ -301,7 +295,6 @@ export default function Register() {
             )}
           </View>
 
-          {/* Email */}
           <View style={styles.fieldContainer}>
             <TextInput
               style={[
@@ -322,7 +315,6 @@ export default function Register() {
             )}
           </View>
 
-          {/* Contraseña */}
           <View style={styles.fieldContainer}>
             <TextInput
               style={[
@@ -338,7 +330,6 @@ export default function Register() {
               onBlur={() => handleBlur('password')}
             />
             
-            {/* Texto de ayuda siempre visible */}
             <Text style={styles.helpText}>
               Mín. 8 caracteres, con mayúsculas, minúsculas y números
             </Text>
@@ -367,7 +358,6 @@ export default function Register() {
             )}
           </View>
 
-          {/* Confirmar Contraseña */}
           <View style={styles.fieldContainer}>
             <TextInput
               style={[
@@ -392,7 +382,6 @@ export default function Register() {
             )}
           </View>
 
-          {/* Edad */}
           <View style={styles.fieldContainer}>
             <TextInput
               style={[
@@ -413,7 +402,6 @@ export default function Register() {
             )}
           </View>
 
-          {/* Selector de Sexo */}
           <View style={styles.fieldContainer}>
             <TouchableOpacity 
               style={[
@@ -434,7 +422,6 @@ export default function Register() {
             )}
           </View>
 
-          {/* Peso */}
           <View style={styles.fieldContainer}>
             <TextInput
               style={[
@@ -454,7 +441,6 @@ export default function Register() {
             )}
           </View>
 
-          {/* Altura */}
           <View style={styles.fieldContainer}>
             <TextInput
               style={[
@@ -496,7 +482,6 @@ export default function Register() {
           </TouchableOpacity>
         </View>
 
-        {/* Modal para selección de sexo */}
         <Modal
           visible={showSexModal}
           transparent={true}

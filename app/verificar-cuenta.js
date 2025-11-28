@@ -15,15 +15,15 @@ export default function VerificarCuenta() {
 
   const verificarToken = async () => {
     try {
-      const response = await fetch(`http://localhost:8081/api/auth/verificar?token=${token}`);
+      const response = await fetch(`https://rayostrength-production.up.railway.app/api/auth/verificar?token=${token}`);
       const data = await response.json();
 
       if (response.ok) {
         setEstado('exito');
-        setMensaje(data.mensaje);
+        setMensaje(data.message || 'Cuenta verificada exitosamente');
       } else {
         setEstado('error');
-        setMensaje(data.error);
+        setMensaje(data.message || data.error || 'Error al verificar la cuenta');
       }
     } catch (error) {
       setEstado('error');
@@ -48,7 +48,7 @@ export default function VerificarCuenta() {
         {estado === 'exito' ? '¡Cuenta Verificada!' : 'Error de Verificación'}
       </Text>
       
-      <Text style={{ fontSize: 16, textAlign: 'center', marginBottom: 30 }}>
+      <Text style={{ fontSize: 16, textAlign: 'center', marginBottom: 30, lineHeight: 22 }}>
         {mensaje}
       </Text>
 
