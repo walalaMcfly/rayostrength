@@ -129,6 +129,15 @@ app.use('/api/admin', adminRoutes)
 
 app.use(express.json());
 
+app.get('/api/health-complete', (req, res) => {
+  res.json({
+    status: 'online',
+    sendgrid: sendgridAvailable ? 'active' : 'inactive',
+    database: 'connected',
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get('/api/debug/check-coach', async (req, res) => {
   try {
     const email = 'carlos.coach@rayostrength.com';
@@ -2393,7 +2402,16 @@ const startServer = async () => {
   }
 };
 
-
+app.get('/api/debug/sendgrid', (req, res) => {
+  console.log('Debug SendGrid llamado');
+  res.json({
+    sendgrid_module: !!sgMail,
+    sendgrid_available: sendgridAvailable,
+    api_key: !!process.env.SENDGRID_API_KEY,
+    from_email: process.env.FROM_EMAIL,
+    node_env: process.env.NODE_ENV
+  });
+});
 
 app.get('/api/debug/sendgrid-status', (req, res) => {
   res.json({
