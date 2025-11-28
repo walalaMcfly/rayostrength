@@ -7,9 +7,23 @@ const adminRoutes = require('./admin');
 const { pool, createTables, testConnection } = require('./config/database');
 const googleSheets = require('./config/googleSheets');
 
+let sgMail = null;
+let sendgridAvailable = false;
+
+try {
+  require.resolve('@sendgrid/mail');
+  sgMail = require('@sendgrid/mail');
+  if (process.env.SENDGRID_API_KEY) {
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    sendgridAvailable = true;
+  }
+} catch (error) {
+  console.log('SendGrid no disponible - Usando modo logs');
+}
+
 const app = express();
 const PORT = process.env.PORT || 8081;
- 
+
 const safeSQLValue = (value) => {
   if (value === undefined || value === null) return null;
   if (value === '') return null;
@@ -18,6 +32,81 @@ const safeSQLValue = (value) => {
 
 function generarTokenVerificacion() {
   return require('crypto').randomBytes(32).toString('hex');
+}
+
+async function enviarEmailVerificacion(email, token) {
+  const enlaceVerificacion = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verificar-cuenta?token=${token}`;
+  
+  console.log('VERIFICACION REQUERIDA:');
+  console.log('Usuario:', email);
+  console.log('Enlace:', enlaceVerificacion);
+  console.log('Token:', token);
+  
+  if (sendgridAvailable && sgMail) {
+    const msg = {
+      to: email,
+      from: {
+        email: process.env.FROM_EMAIL || 'noreply@rayostrength.com',
+        name: 'RayoStrength'
+      },
+      subject: 'Verifica tu cuenta - RayoStrength',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px; }
+            .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            .header { text-align: center; margin-bottom: 30px; }
+            .logo { color: #007AFF; font-size: 24px; font-weight: bold; }
+            .button { display: inline-block; background: #007AFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .footer { margin-top: 30px; text-align: center; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="logo">RayoStrength</div>
+              <h2>¡Bienvenido a RayoStrength!</h2>
+            </div>
+            
+            <p>Hola,</p>
+            <p>Para activar tu cuenta y comenzar tu journey fitness, haz clic en el siguiente botón:</p>
+            
+            <div style="text-align: center;">
+              <a href="${enlaceVerificacion}" class="button">Verificar Mi Cuenta</a>
+            </div>
+            
+            <p>O copia y pega este enlace en tu navegador:</p>
+            <p style="word-break: break-all; background: #f8f9fa; padding: 10px; border-radius: 5px;">
+              ${enlaceVerificacion}
+            </p>
+            
+            <p><strong>Este enlace expirará en 24 horas.</strong></p>
+            
+            <p>Si no creaste esta cuenta, puedes ignorar este mensaje.</p>
+            
+            <div class="footer">
+              <p>© 2024 RayoStrength. Todos los derechos reservados.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+
+    try {
+      await sgMail.send(msg);
+      console.log('Email de verificación enviado a:', email);
+      return true;
+    } catch (error) {
+      console.error('Error enviando email:', error);
+      return false;
+    }
+  } else {
+    console.log('Email no enviado - SendGrid no configurado');
+    return true;
+  }
 }
 
 app.use(cors({
@@ -248,9 +337,7 @@ app.post('/api/auth/register', async (req, res) => {
       [nombre, apellido, email, hashedPassword, edad, sexo, peso_actual || null, altura || null, tokenVerificacion, expiracionToken]
     );
 
-    const enlaceVerificacion = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verificar-cuenta?token=${tokenVerificacion}`;
-    console.log('Email de verificación enviado a:', email);
-    console.log('Enlace de verificación:', enlaceVerificacion);
+    await enviarEmailVerificacion(email, tokenVerificacion);
 
     res.status(201).json({
       success: true,
@@ -300,9 +387,7 @@ app.post('/api/auth/registro-con-verificacion', async (req, res) => {
       [nombre, apellido, email, hashedPassword, edad, sexo, peso_actual || null, altura || null, tokenVerificacion, expiracionToken]
     );
 
-    const enlaceVerificacion = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verificar-cuenta?token=${tokenVerificacion}`;
-    console.log('Email de verificación enviado a:', email);
-    console.log('Enlace de verificación:', enlaceVerificacion);
+    await enviarEmailVerificacion(email, tokenVerificacion);
 
     res.status(201).json({
       success: true,
@@ -401,10 +486,7 @@ app.post('/api/auth/reenviar-verificacion', async (req, res) => {
       'UPDATE Usuario SET token_verificacion = ?, expiracion_token = ? WHERE id_usuario = ?',
       [nuevoToken, nuevaExpiracion, user.id_usuario]
     );
-
-    const enlaceVerificacion = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verificar-cuenta?token=${nuevoToken}`;
-    console.log('Nuevo email de verificación enviado a:', email);
-    console.log('Nuevo enlace de verificación:', enlaceVerificacion);
+    await enviarEmailVerificacion(email, nuevoToken);
 
     res.json({
       success: true,
@@ -2162,35 +2244,6 @@ app.get('/api/debug/vinculacion-completa/:idCliente', async (req, res) => {
   }
 });
 
-const startServer = async () => {
-  try {
-    await createTables();
-    const server = app.listen(8081, '0.0.0.0', () => {
-      console.log(`Servidor corriendo en puerto ${PORT}`);
-    });
-
-    process.on('SIGINT', () => {
-      console.log('Apagando servidor...');
-      server.close(() => {
-        console.log('Servidor apagado');
-        process.exit(0);
-      });
-    });
-
-    process.on('SIGTERM', () => {
-      console.log('Recibida señal de terminación');
-      server.close(() => {
-        console.log('Servidor apagado');
-        process.exit(0);
-      });
-    });
-
-  } catch (error) {
-    console.error('Error iniciando servidor:', error);
-    process.exit(1);
-  }
-};
-
 app.post('/api/debug/test-password-direct', async (req, res) => {
   try {
     console.log('=== DIAGNÓSTICO INICIADO ===');
@@ -2310,5 +2363,34 @@ app.post('/api/debug/update-admin-password', async (req, res) => {
     });
   }
 });
+
+const startServer = async () => {
+  try {
+    await createTables();
+    const server = app.listen(8081, '0.0.0.0', () => {
+      console.log(`Servidor corriendo en puerto ${PORT}`);
+    });
+
+    process.on('SIGINT', () => {
+      console.log('Apagando servidor...');
+      server.close(() => {
+        console.log('Servidor apagado');
+        process.exit(0);
+      });
+    });
+
+    process.on('SIGTERM', () => {
+      console.log('Recibida señal de terminación');
+      server.close(() => {
+        console.log('Servidor apagado');
+        process.exit(0);
+      });
+    });
+
+  } catch (error) {
+    console.error('Error iniciando servidor:', error);
+    process.exit(1);
+  }
+};
 
 startServer();

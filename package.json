@@ -19,6 +19,7 @@
     "@react-navigation/drawer": "^7.5.0",
     "@react-navigation/elements": "^2.3.8",
     "@react-navigation/native": "^7.1.8",
+    "@sendgrid/mail": "^8.1.6",
     "@shopify/react-native-skia": "2.2.12",
     "expo": "~54.0.25",
     "expo-blur": "~15.0.7",
