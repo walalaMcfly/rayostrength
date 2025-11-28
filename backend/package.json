@@ -9,6 +9,7 @@
     "check-config": "node -e \"require('./config/environment'); console.log(' Configuration check passed');\""
   },
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -20,8 +21,4 @@
   "devDependencies": {
     "nodemon": "^3.0.1"
   }
-
-  
-  
 }
-
