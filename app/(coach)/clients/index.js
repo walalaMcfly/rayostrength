@@ -93,7 +93,6 @@ export default function ClientManagement() {
     } catch (error) {
       console.error('Error cargando clientes:', error);
       setError(error.message);
-      // NO establecemos clientes - la lista queda vacía
     } finally {
       setLoading(false);
     }

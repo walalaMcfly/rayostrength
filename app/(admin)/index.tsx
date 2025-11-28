@@ -1,18 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View
 } from 'react-native';
 
 const API_URL = 'https://rayostrength-production.up.railway.app/api';
 
 export default function AdminDashboard() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({
@@ -52,6 +54,8 @@ export default function AdminDashboard() {
     fetchStats();
   };
 
+
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -61,56 +65,65 @@ export default function AdminDashboard() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor="#fdec4d"
-        />
-      }
-    >
+    <View style={styles.container}>
+      {/* Header con botón de logout */}
       <View style={styles.header}>
-        <Text style={styles.title}>Panel de Administración</Text>
-        <Text style={styles.subtitle}>RayoStrength</Text>
-      </View>
-
-      <View style={styles.statsGrid}>
-        <View style={[styles.statCard, { backgroundColor: '#2563eb' }]}>
-          <Ionicons name="people-outline" size={32} color="#fff" />
-          <Text style={styles.statNumber}>{stats.usuariosActivos}</Text>
-          <Text style={styles.statLabel}>Usuarios Activos</Text>
-        </View>
-
-        <View style={[styles.statCard, { backgroundColor: '#7c3aed' }]}>
-          <Ionicons name="barbell-outline" size={32} color="#fff" />
-          <Text style={styles.statNumber}>{stats.coachesActivos}</Text>
-          <Text style={styles.statLabel}>Coaches Activos</Text>
-        </View>
-
-        <View style={[styles.statCard, { backgroundColor: '#059669' }]}>
-          <Ionicons name="document-text-outline" size={32} color="#fff" />
-          <Text style={styles.statNumber}>{stats.rutinasAsignadas}</Text>
-          <Text style={styles.statLabel}>Rutinas Asignadas</Text>
-        </View>
-
-        <View style={[styles.statCard, { backgroundColor: '#dc2626' }]}>
-          <Ionicons name="fitness-outline" size={32} color="#fff" />
-          <Text style={styles.statNumber}>{stats.sesionesHoy}</Text>
-          <Text style={styles.statLabel}>Sesiones Hoy</Text>
+        <View>
+          <Text style={styles.title}>Panel de Administración</Text>
+          <Text style={styles.subtitle}>RayoStrength</Text>
         </View>
       </View>
+      
 
-      <View style={styles.infoSection}>
-        <Text style={styles.infoTitle}>Acciones Rápidas</Text>
-        <Text style={styles.infoText}>
-          • Gestiona coaches desde la pestaña "Coaches"{'\n'}
-          • Administra usuarios desde "Usuarios"{'\n'}
-          • Desliza para actualizar estadísticas
-        </Text>
-      </View>
-    </ScrollView>
+      <ScrollView
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#fdec4d"
+          />
+        }
+      >
+
+        
+        <View style={styles.statsGrid}>
+          <View style={[styles.statCard, { backgroundColor: '#2563eb' }]}>
+            <Ionicons name="people-outline" size={32} color="#fff" />
+            <Text style={styles.statNumber}>{stats.usuariosActivos}</Text>
+            <Text style={styles.statLabel}>Usuarios Activos</Text>
+          </View>
+
+          <View style={[styles.statCard, { backgroundColor: '#7c3aed' }]}>
+            <Ionicons name="barbell-outline" size={32} color="#fff" />
+            <Text style={styles.statNumber}>{stats.coachesActivos}</Text>
+            <Text style={styles.statLabel}>Coaches Activos</Text>
+          </View>
+
+          <View style={[styles.statCard, { backgroundColor: '#059669' }]}>
+            <Ionicons name="document-text-outline" size={32} color="#fff" />
+            <Text style={styles.statNumber}>{stats.rutinasAsignadas}</Text>
+            <Text style={styles.statLabel}>Rutinas Asignadas</Text>
+          </View>
+
+          <View style={[styles.statCard, { backgroundColor: '#dc2626' }]}>
+            <Ionicons name="fitness-outline" size={32} color="#fff" />
+            <Text style={styles.statNumber}>{stats.sesionesHoy}</Text>
+            <Text style={styles.statLabel}>Sesiones Hoy</Text>
+          </View>
+        </View>
+
+        
+
+        <View style={styles.infoSection}>
+          <Text style={styles.infoTitle}>Acciones Rápidas</Text>
+          <Text style={styles.infoText}>
+            • Gestiona coaches desde la pestaña "Coaches"{'\n'}
+            • Administra usuarios desde "Usuarios"{'\n'}
+            • Desliza para actualizar estadísticas
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -126,18 +139,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 20,
-    paddingTop: 10,
+    paddingTop: 50, 
+    backgroundColor: '#1a1a1a',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 5,
+    marginBottom: 2,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#9ca3af',
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2a2a2a',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 5,
+  },
+  logoutText: {
+    color: '#fdec4d',
+    fontSize: 14,
+    fontWeight: '600',
   },
   statsGrid: {
     flexDirection: 'row',

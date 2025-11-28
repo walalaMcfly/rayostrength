@@ -16,24 +16,50 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     const verifyAuth = async () => {
-      const token = await AsyncStorage.getItem('userToken');
-      const inCoach = segments[0] === '(coach)';
-      if (!token && inCoach) {
-        router.replace('/');
-        return;
-      }
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+        const role = await AsyncStorage.getItem('userRole');
+        const currentSegment = segments[0];
+        
+        const inProtectedArea = currentSegment === '(coach)' || 
+                               currentSegment === '(admin)' || 
+                               currentSegment === '(drawer)';
+        
+        if (!token && inProtectedArea) {
+          router.replace('/');
+          return;
+        }
 
-      setCheckingAuth(false);
+        if (token && inProtectedArea) {
+          if (currentSegment === '(admin)' && role !== 'admin') {
+            await AsyncStorage.clear();
+            router.replace('/');
+            return;
+          }
+          if (currentSegment === '(coach)' && role !== 'coach') {
+            await AsyncStorage.clear();
+            router.replace('/');
+            return;
+          }
+        }
+
+      } catch (error) {
+        console.error('Error verificando auth:', error);
+      } finally {
+        setIsReady(true);
+      }
     };
 
-    verifyAuth();
-  }, [segments]);
+    if (loadedFonts) {
+      verifyAuth();
+    }
+  }, [segments, loadedFonts]);
 
-  if (!loadedFonts || checkingAuth) return null;
+  if (!loadedFonts || !isReady) return null;
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
@@ -42,6 +68,7 @@ export default function RootLayout() {
         <Stack.Screen name="register" />
         <Stack.Screen name="(drawer)" />
         <Stack.Screen name="(coach)" />
+        <Stack.Screen name="(admin)" />
         <Stack.Screen name="+not-found" />
       </Stack>
 

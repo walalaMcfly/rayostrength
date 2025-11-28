@@ -16,6 +16,10 @@ const safeSQLValue = (value) => {
   return value;
 };
 
+function generarTokenVerificacion() {
+  return require('crypto').randomBytes(32).toString('hex');
+}
+
 app.use(cors({
   origin: [
     "https://rayostrength-production.up.railway.app",
@@ -185,6 +189,32 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+const verificarCuentaActivada = (req, res, next) => {
+  if (req.user.role === 'user') {
+    pool.execute(
+      'SELECT verificado FROM Usuario WHERE id_usuario = ?',
+      [req.user.userId]
+    ).then(([users]) => {
+      if (users.length > 0 && !users[0].verificado) {
+        return res.status(403).json({
+          success: false,
+          message: 'Cuenta no verificada. Por favor verifica tu correo electrónico.',
+          requiereVerificacion: true
+        });
+      }
+      next();
+    }).catch(error => {
+      console.error('Error verificando cuenta:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    });
+  } else {
+    next();
+  }
+};
+
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { nombre, apellido, email, contraseña, edad, sexo, peso_actual, altura } = req.body;
@@ -205,47 +235,184 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'El email ya está registrado'
-
-        
       });
-      
-      
-
-      
     }
     
     const hashedPassword = await bcrypt.hash(contraseña, 10);
+    const tokenVerificacion = generarTokenVerificacion();
+    const expiracionToken = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     const [result] = await pool.execute(
-      `INSERT INTO Usuario (nombre, apellido, email, contraseña, edad, sexo, peso_actual, altura) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [nombre, apellido, email, hashedPassword, edad, sexo, peso_actual || null, altura || null]
+      `INSERT INTO Usuario (nombre, apellido, email, contraseña, edad, sexo, peso_actual, altura, verificado, token_verificacion, expiracion_token) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?)`,
+      [nombre, apellido, email, hashedPassword, edad, sexo, peso_actual || null, altura || null, tokenVerificacion, expiracionToken]
     );
 
-    const token = jwt.sign(
-      { userId: result.insertId, email },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const enlaceVerificacion = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verificar-cuenta?token=${tokenVerificacion}`;
+    console.log('Email de verificación enviado a:', email);
+    console.log('Enlace de verificación:', enlaceVerificacion);
 
     res.status(201).json({
       success: true,
-      message: 'Usuario registrado exitosamente',
-      token,
-      user: {
-        id_usuario: result.insertId,
-        nombre,
-        apellido,
-        email,
-        edad,
-        sexo,
-        peso_actual,
-        altura
-      }
+      message: 'Usuario registrado. Por favor verifica tu correo electrónico.',
+      requiereVerificacion: true
     });
 
   } catch (error) {
     console.error('Error en registro:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+app.post('/api/auth/registro-con-verificacion', async (req, res) => {
+  try {
+    const { nombre, apellido, email, contraseña, edad, sexo, peso_actual, altura } = req.body;
+
+    if (!nombre || !apellido || !email || !contraseña || !edad || !sexo) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nombre, apellido, email, contraseña, edad y sexo son requeridos'
+      });
+    }
+
+    const [existingUsers] = await pool.execute(
+      'SELECT id_usuario FROM Usuario WHERE email = ?',
+      [email]
+    );
+
+    if (existingUsers.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'El email ya está registrado'
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(contraseña, 10);
+    const tokenVerificacion = generarTokenVerificacion();
+    const expiracionToken = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const [result] = await pool.execute(
+      `INSERT INTO Usuario (nombre, apellido, email, contraseña, edad, sexo, peso_actual, altura, verificado, token_verificacion, expiracion_token) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?)`,
+      [nombre, apellido, email, hashedPassword, edad, sexo, peso_actual || null, altura || null, tokenVerificacion, expiracionToken]
+    );
+
+    const enlaceVerificacion = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verificar-cuenta?token=${tokenVerificacion}`;
+    console.log('Email de verificación enviado a:', email);
+    console.log('Enlace de verificación:', enlaceVerificacion);
+
+    res.status(201).json({
+      success: true,
+      message: 'Usuario registrado. Por favor verifica tu correo electrónico.',
+      requiereVerificacion: true
+    });
+
+  } catch (error) {
+    console.error('Error en registro con verificación:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+app.get('/api/auth/verificar', async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token de verificación requerido'
+      });
+    }
+
+    const [users] = await pool.execute(
+      'SELECT id_usuario, expiracion_token FROM Usuario WHERE token_verificacion = ? AND verificado = FALSE',
+      [token]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token inválido o cuenta ya verificada'
+      });
+    }
+
+    const user = users[0];
+
+    if (new Date() > user.expiracion_token) {
+      return res.status(400).json({
+        success: false,
+        message: 'El token ha expirado'
+      });
+    }
+
+    await pool.execute(
+      'UPDATE Usuario SET verificado = TRUE, token_verificacion = NULL, expiracion_token = NULL WHERE id_usuario = ?',
+      [user.id_usuario]
+    );
+
+    res.json({
+      success: true,
+      message: 'Cuenta verificada exitosamente. Ya puedes iniciar sesión.'
+    });
+
+  } catch (error) {
+    console.error('Error en verificación:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+app.post('/api/auth/reenviar-verificacion', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email requerido'
+      });
+    }
+
+    const [users] = await pool.execute(
+      'SELECT id_usuario, token_verificacion, expiracion_token FROM Usuario WHERE email = ? AND verificado = FALSE',
+      [email]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Usuario no encontrado o ya verificado'
+      });
+    }
+
+    const user = users[0];
+    const nuevoToken = generarTokenVerificacion();
+    const nuevaExpiracion = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await pool.execute(
+      'UPDATE Usuario SET token_verificacion = ?, expiracion_token = ? WHERE id_usuario = ?',
+      [nuevoToken, nuevaExpiracion, user.id_usuario]
+    );
+
+    const enlaceVerificacion = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verificar-cuenta?token=${nuevoToken}`;
+    console.log('Nuevo email de verificación enviado a:', email);
+    console.log('Nuevo enlace de verificación:', enlaceVerificacion);
+
+    res.json({
+      success: true,
+      message: 'Email de verificación reenviado'
+    });
+
+  } catch (error) {
+    console.error('Error reenviando verificación:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor'
@@ -310,6 +477,15 @@ app.post('/api/auth/login', async (req, res) => {
       if (users.length > 0) {
         user = users[0];
         role = 'user';
+        
+        if (!user.verificado) {
+          return res.status(401).json({
+            success: false,
+            message: 'Cuenta no verificada. Por favor verifica tu correo electrónico.',
+            requiereVerificacion: true
+          });
+        }
+
         const validPassword = await bcrypt.compare(contraseña, user.contraseña);
         if (!validPassword) {
           return res.status(401).json({
@@ -367,7 +543,8 @@ app.post('/api/auth/login', async (req, res) => {
           sexo: user.sexo,
           peso_actual: user.peso_actual,
           altura: user.altura,
-          role: 'user'
+          role: 'user',
+          verificado: user.verificado
         }
       });
     } else {
@@ -595,7 +772,7 @@ function transformSheetDataToRutinas(sheetData) {
   });
 }
 
-app.post('/api/rutinas/sincronizar/:idCliente', authenticateToken, async (req, res) => {
+app.post('/api/rutinas/sincronizar/:idCliente', authenticateToken, verificarCuentaActivada, async (req, res) => {
   try {
     const { idCliente } = req.params;
 
@@ -658,7 +835,7 @@ app.post('/api/rutinas/sincronizar/:idCliente', authenticateToken, async (req, r
   }
 });
 
-app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
+app.post('/api/wellness/registrar', authenticateToken, verificarCuentaActivada, async (req, res) => {
   try {
     const { energia, sueno, estres, dolor_muscular, motivacion, apetito } = req.body;
     const userId = req.user.userId;
@@ -721,7 +898,7 @@ app.post('/api/wellness/registrar', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) => {
+app.post('/api/progreso/registrar-sesion', authenticateToken, verificarCuentaActivada, async (req, res) => {
   try {
     const { 
       semana_rutina, 
@@ -773,7 +950,7 @@ app.post('/api/progreso/registrar-sesion', authenticateToken, async (req, res) =
   }
 });
 
-app.get('/api/user/profile', authenticateToken, async (req, res) => {
+app.get('/api/user/profile', authenticateToken, verificarCuentaActivada, async (req, res) => {
   try {
     const [users] = await pool.execute(
       'SELECT id_usuario, nombre, apellido, email, edad, sexo, peso_actual, altura FROM Usuario WHERE id_usuario = ?',
@@ -811,7 +988,7 @@ app.get('/api/user/profile', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/user/profile', authenticateToken, async (req, res) => {
+app.put('/api/user/profile', authenticateToken, verificarCuentaActivada, async (req, res) => {
   try {
     const { nombre, apellido, edad, sexo, peso_actual, altura } = req.body;
 
@@ -1281,7 +1458,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
   }
 });
 
-app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
+app.get('/api/progreso/datos-reales', authenticateToken, verificarCuentaActivada, async (req, res) => {
   try {
     const userId = req.user.userId;
     console.log('Obteniendo datos de progreso para usuario:', userId);
@@ -1473,7 +1650,7 @@ app.get('/api/progreso/datos-reales', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/progreso/guardar-ejercicio', authenticateToken, async (req, res) => {
+app.post('/api/progreso/guardar-ejercicio', authenticateToken, verificarCuentaActivada, async (req, res) => {
   try {
     const {
       id_ejercicio,
@@ -1533,7 +1710,7 @@ app.get('/api/progreso/debug', authenticateToken, (req, res) => {
   });
 });
 
-app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, res) => {
+app.post('/api/progreso/actualizar-ejercicio', authenticateToken, verificarCuentaActivada, async (req, res) => {
   try {
     const {
       id_ejercicio,
@@ -1589,7 +1766,7 @@ app.post('/api/progreso/actualizar-ejercicio', authenticateToken, async (req, re
   }
 });
 
-app.get('/api/progreso/historial-pesos', authenticateToken, async (req, res) => {
+app.get('/api/progreso/historial-pesos', authenticateToken, verificarCuentaActivada, async (req, res) => {
   try {
     const userId = req.user.userId;
     
@@ -1663,7 +1840,7 @@ app.post('/api/meet/crear-sesion', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/api/meet/sesiones-usuario', authenticateToken, async (req, res) => {
+app.get('/api/meet/sesiones-usuario', authenticateToken, verificarCuentaActivada, async (req, res) => {
   try {
     if (req.user.role !== 'user') {
       return res.status(403).json({
@@ -2014,8 +2191,6 @@ const startServer = async () => {
   }
 };
 
-// endpoint para ver la password temporal
-
 app.post('/api/debug/test-password-direct', async (req, res) => {
   try {
     console.log('=== DIAGNÓSTICO INICIADO ===');
@@ -2093,19 +2268,15 @@ app.post('/api/debug/test-password-direct', async (req, res) => {
   }
 });
 
-
-//Endpoint para cambiar la contraseña al admin temporal
 app.post('/api/debug/update-admin-password', async (req, res) => {
   try {
     const { email, newPassword } = req.body;
     
     console.log('Actualizando contraseña para:', email);
     
-    // Generar nuevo hash
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     console.log('Nuevo hash generado:', hashedPassword);
     
-    // Actualizar en BD
     const [result] = await pool.execute(
       'UPDATE Coach SET contraseña = ? WHERE email = ?',
       [hashedPassword, email]
@@ -2113,7 +2284,6 @@ app.post('/api/debug/update-admin-password', async (req, res) => {
     
     console.log('Filas actualizadas:', result.affectedRows);
     
-    // Verificar que se actualizó correctamente
     const [coaches] = await pool.execute(
       'SELECT email, contraseña FROM Coach WHERE email = ?',
       [email]

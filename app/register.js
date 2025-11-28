@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -38,7 +39,7 @@ export default function Register() {
   
   const [showSexModal, setShowSexModal] = useState(false);
 
-  // Validaciones en tiempo real
+
   const validateField = (name, value) => {
     switch (name) {
       case "nombre":
@@ -89,7 +90,6 @@ export default function Register() {
     }
   };
 
-  // Calcular fortaleza de contraseña
   const calculatePasswordStrength = (password) => {
     let strength = 0;
     if (password.length >= 8) strength += 25;
@@ -186,7 +186,7 @@ export default function Register() {
     const allTouched = {};
     Object.keys(form).forEach(key => { allTouched[key] = true; });
     setTouched(allTouched);
-    
+
     const newErrors = {};
     Object.keys(form).forEach(key => {
       newErrors[key] = validateField(key, form[key]);
@@ -200,44 +200,53 @@ export default function Register() {
 
     setLoading(true);
 
-     try {
-    const response = await fetch(`${API_URL}/auth/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        nombre: form.nombre,
-        apellido: form.apellido,
-        email: form.email,
-        contraseña: form.password,
-        edad: parseInt(form.edad),
-        sexo: form.sexo,
-        peso_actual: parseFloat(form.peso),
-        altura: parseFloat(form.altura)
-      }),
-    });
+    try {
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          nombre: form.nombre,
+          apellido: form.apellido,
+          email: form.email,
+          contraseña: form.password,
+          edad: parseInt(form.edad),
+          sexo: form.sexo,
+          peso_actual: parseFloat(form.peso),
+          altura: parseFloat(form.altura)
+        }),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (data.success) {
-      
-      await AsyncStorage.setItem('userToken', data.token);
-      await AsyncStorage.setItem('userData', JSON.stringify(data.user));
-    
-      console.log('✅ Token guardado después del registro');
-      Alert.alert("¡Éxito!", "Su cuenta fue creada correctamente");
-      router.replace('/(tabs)'); 
-    } else {
-      Alert.alert("Error", data.message);
+      if (response.ok) {
+        if (data.requiereVerificacion) {
+          Alert.alert(
+            'Registro Exitoso',
+            'Te hemos enviado un email de verificación. Por favor revisa tu bandeja de entrada.',
+            [
+              {
+                text: 'OK',
+                onPress: () => router.push('/')
+              }
+            ]
+          );
+        } else {
+          await AsyncStorage.setItem('userToken', data.token);
+          await AsyncStorage.setItem('userRole', 'user');
+          router.replace('/(drawer)/(tabs)');
+        }
+      } else {
+        Alert.alert('Error', data.message);
+      }
+    } catch (error) {
+      console.error('Error registro:', error);
+      Alert.alert("Error", "No se pudo conectar al servidor");
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error('Error registro:', error);
-    Alert.alert("Error", "No se pudo conectar al servidor");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <KeyboardAvoidingView 

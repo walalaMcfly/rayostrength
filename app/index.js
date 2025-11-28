@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -20,14 +20,31 @@ const API_URL = 'https://rayostrength-production.up.railway.app/api';
 export default function Login() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
-
   const [form, setForm] = useState({
     email: "",
     password: ""
   });
-  
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+
+  console.log('[LOGIN] Renderizando index.js');
+
+  useEffect(() => {
+    const check = async () => {
+      const role = await AsyncStorage.getItem('userRole');
+      const token = await AsyncStorage.getItem('userToken');
+      console.log('[LOGIN] check role:', role, 'token:', token);
+      if (!role || !token) {
+        console.log('[LOGIN] No hay sesión, nos quedamos aquí');
+        return;         
+      }
+
+      if (role === 'admin') router.replace('/(admin)');
+      else if (role === 'coach') router.replace('/(coach)');
+      else router.replace('/(drawer)/(tabs)');
+    };
+    check();
+  }, []);
 
   const handleLogin = async () => {
     try {
@@ -56,7 +73,19 @@ export default function Login() {
       console.log('📨 Respuesta completa del login:', data);
 
       if (!response.ok) {
-        throw new Error(data.message || 'Error en el servidor');
+        if (data.requiereVerificacion) {
+          Alert.alert(
+            'Cuenta no verificada',
+            data.message,
+            [
+              { text: 'Reenviar verificación', onPress: () => router.push('/reenviar-verificacion') },
+              { text: 'OK', style: 'cancel' }
+            ]
+          );
+        } else {
+          throw new Error(data.message || 'Error en el servidor');
+        }
+        return;
       }
 
       if (data.success) {
@@ -65,24 +94,22 @@ export default function Login() {
         await AsyncStorage.setItem('userRole', data.user.role); 
         
         console.log(' Login exitoso. Rol:', data.user.role);
-        console.log('👤 Datos usuario:', data.user);
         
-        // Redirección basada en el rol
         if (data.user.role === 'admin') {
-          console.log('🛡️ Redirigiendo a panel de administración');
+          console.log(' Redirigiendo a área de admin');
           router.replace('/(admin)');
         } else if (data.user.role === 'coach') {
-          console.log('🏋️ Redirigiendo a área de coach');
+          console.log(' Redirigiendo a área de coach');
           router.replace('/(coach)');
         } else {
-          console.log('👤 Redirigiendo a área de cliente');
-          router.replace('/(drawer)/(tabs)/rutinas');
+          console.log(' Redirigiendo a área de cliente');
+          router.replace('/(drawer)/(tabs)');
         }
       } else {
         Alert.alert("Error", data.message || "Credenciales incorrectas");
       }
     } catch (error) {
-      console.error('❌Error completo en login:', error);
+      console.error('Error completo en login:', error);
       Alert.alert("Error", error.message || "No se pudo conectar al servidor");
     } finally {
       setLoading(false);

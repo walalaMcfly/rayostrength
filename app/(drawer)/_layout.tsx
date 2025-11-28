@@ -74,7 +74,7 @@ export default function DrawerLayout() {
         }}
       />
 
-      {/* CERRAR SESIÓN - AHORA SÍ ABRE UNA PANTALLA REAL */}
+      {/* CERRAR SESIÓN  */}
       <Drawer.Screen
         name="cerrarsesion"
         options={{

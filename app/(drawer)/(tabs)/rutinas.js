@@ -478,17 +478,6 @@ export default function RutinasScreen() {
         </View>
       )}
 
-      {rutina && (
-        <View style={{ padding: 10, backgroundColor: '#fff', margin: 10, borderRadius: 8 }}>
-          <Text style={{ fontWeight: 'bold', color: '#000' }}>DEBUG:</Text>
-          <Text style={{ color: '#000' }}>Rutina cargada: {rutina.personalizada ? 'Si' : 'No'}</Text>
-          <Text style={{ color: '#000' }}>Ejercicios: {rutina.ejercicios ? rutina.ejercicios.length : 0}</Text>
-          {rutina.ejercicios && rutina.ejercicios.length > 0 && (
-            <Text style={{ color: '#000' }}>Primer ejercicio: {rutina.ejercicios[0].nombre}</Text>
-          )}
-        </View>
-      )}
-
       <FlatList
         data={rutina?.ejercicios || []}
         keyExtractor={(item, index) => {

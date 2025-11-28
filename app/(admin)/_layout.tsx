@@ -2,45 +2,50 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Tabs, useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Text, TouchableOpacity } from 'react-native';
 
 export default function AdminLayout() {
   const router = useRouter();
 
   useEffect(() => {
-    checkAdminAccess();
-  }, []);
-
-  const checkAdminAccess = async () => {
-    try {
+    const verify = async () => {
       const role = await AsyncStorage.getItem('userRole');
       if (role !== 'admin') {
         Alert.alert('Acceso denegado', 'No tienes permisos de administrador');
-        router.replace('/');
+        await AsyncStorage.multiRemove(['userRole', 'userToken', 'userData']);
+       router.replace('/');
       }
-    } catch (error) {
-      console.error('Error verificando acceso:', error);
-      router.replace('/');
-    }
-  };
+    };
+    verify();
+  }, []);
 
-  const handleLogout = async () => {
-    Alert.alert(
-      'Cerrar Sesión',
-      '¿Estás seguro que deseas salir?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Salir',
-          style: 'destructive',
-          onPress: async () => {
-            await AsyncStorage.clear();
-            router.replace('/');
-          },
+ const handleLogout = async () => {
+  console.log('[LOGOUT] Botón presionado');
+  Alert.alert(
+    'Cerrar sesión',
+    '¿Seguro?',
+    [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Sí',
+        onPress: async () => {
+          console.log('[LOGOUT] Confirmado');
+          try {
+            const keysBefore = await AsyncStorage.getAllKeys();
+            console.log('[LOGOUT] Keys antes:', keysBefore);
+            await AsyncStorage.multiRemove(['userRole', 'userToken', 'userData']);
+            const keysAfter = await AsyncStorage.getAllKeys();
+            console.log('[LOGOUT] Keys después:', keysAfter);
+            console.log('[LOGOUT] Navegando a /');
+            router.replace('/(admin)');
+          } catch (e) {
+            console.error('[LOGOUT] Error:', e);
+          }
         },
-      ]
-    );
-  };
+      },
+    ]
+  );
+};
 
   return (
     <Tabs
@@ -51,18 +56,27 @@ export default function AdminLayout() {
           backgroundColor: '#1a1a1a',
           borderTopColor: '#2a2a2a',
         },
-        headerStyle: {
-          backgroundColor: '#1a1a1a',
-        },
+        headerStyle: { backgroundColor: '#1a1a1a' },
         headerTintColor: '#fff',
+        headerTitleStyle: { fontWeight: 'bold' },
         headerRight: () => (
-          <Ionicons
-            name="log-out-outline"
-            size={24}
-            color="#fdec4d"
-            style={{ marginRight: 15 }}
+          <TouchableOpacity
             onPress={handleLogout}
-          />
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#dc2626',
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 8,
+              marginRight: 15,
+            }}
+          >
+            <Ionicons name="log-out-outline" size={18} color="#fff" />
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600', marginLeft: 5 }}>
+              Salir
+            </Text>
+          </TouchableOpacity>
         ),
       }}
     >
