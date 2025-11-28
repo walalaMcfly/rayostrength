@@ -2424,4 +2424,23 @@ app.get('/api/debug/sendgrid-status', (req, res) => {
   });
 });
 
+app.post('/api/test-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    const result = await enviarEmailVerificacion(email, 'test-token-123');
+    
+    res.json({
+      success: true,
+      email_sent: result,
+      message: result ? 'Email enviado correctamente' : 'Error enviando email'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 startServer();
