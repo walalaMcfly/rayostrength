@@ -35,77 +35,132 @@ function generarTokenVerificacion() {
 }
 
 async function enviarEmailVerificacion(email, token) {
-  const enlaceVerificacion = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verificar-cuenta?token=${token}`;
+  const enlaceVerificacion = `${process.env.FRONTEND_URL || 'https://tu-app-frontend.railway.app'}/verificar-cuenta?token=${token}`;
   
-  console.log('VERIFICACION REQUERIDA:');
-  console.log('Usuario:', email);
-  console.log('Enlace:', enlaceVerificacion);
-  console.log('Token:', token);
+  console.log('Enviando email de verificación a:', email);
+  console.log('Enlace de verificación:', enlaceVerificacion);
   
-  if (sendgridAvailable && sgMail) {
-    const msg = {
-      to: email,
-      from: {
-        email: process.env.FROM_EMAIL || 'noreply@rayostrength.com',
-        name: 'RayoStrength'
-      },
-      subject: 'Verifica tu cuenta - RayoStrength',
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px; }
-            .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-            .header { text-align: center; margin-bottom: 30px; }
-            .logo { color: #007AFF; font-size: 24px; font-weight: bold; }
-            .button { display: inline-block; background: #007AFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-            .footer { margin-top: 30px; text-align: center; color: #666; font-size: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <div class="logo">RayoStrength</div>
-              <h2>¡Bienvenido a RayoStrength!</h2>
-            </div>
-            
-            <p>Hola,</p>
-            <p>Para activar tu cuenta y comenzar tu journey fitness, haz clic en el siguiente botón:</p>
-            
-            <div style="text-align: center;">
-              <a href="${enlaceVerificacion}" class="button">Verificar Mi Cuenta</a>
-            </div>
-            
-            <p>O copia y pega este enlace en tu navegador:</p>
-            <p style="word-break: break-all; background: #f8f9fa; padding: 10px; border-radius: 5px;">
-              ${enlaceVerificacion}
-            </p>
-            
-            <p><strong>Este enlace expirará en 24 horas.</strong></p>
-            
-            <p>Si no creaste esta cuenta, puedes ignorar este mensaje.</p>
-            
-            <div class="footer">
-              <p>© 2024 RayoStrength. Todos los derechos reservados.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `,
-    };
-
-    try {
-      await sgMail.send(msg);
-      console.log('Email de verificación enviado a:', email);
-      return true;
-    } catch (error) {
-      console.error('Error enviando email:', error);
-      return false;
-    }
-  } else {
-    console.log('Email no enviado - SendGrid no configurado');
+  if (!sendgridAvailable || !sgMail) {
+    console.log('SendGrid no disponible - Enlace:', enlaceVerificacion);
     return true;
+  }
+
+  const msg = {
+    to: email,
+    from: {
+      email: process.env.FROM_EMAIL || 'noreply@rayostrength.com',
+      name: 'RayoStrength'
+    },
+    subject: 'Verifica tu cuenta - RayoStrength',
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Verifica tu cuenta</title>
+        <style>
+          body { 
+            font-family: Arial, sans-serif; 
+            background-color: #f4f4f4; 
+            margin: 0; 
+            padding: 20px; 
+            line-height: 1.6;
+          }
+          .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            background: white; 
+            border-radius: 10px; 
+            padding: 30px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+          }
+          .header { 
+            text-align: center; 
+            margin-bottom: 30px; 
+            border-bottom: 2px solid #e6e35aff;
+            padding-bottom: 20px;
+          }
+          .logo { 
+            color: #e6e35aff; 
+            font-size: 28px; 
+            font-weight: bold; 
+            margin-bottom: 10px;
+          }
+          .button { 
+            display: block;
+            width: 200px;
+            margin: 20px auto;
+            background: #e6e35aff; 
+            color: white; 
+            padding: 12px 24px; 
+            text-decoration: none; 
+            border-radius: 5px; 
+            text-align: center;
+            font-weight: bold;
+          }
+          .footer { 
+            margin-top: 30px; 
+            text-align: center; 
+            color: #666; 
+            font-size: 12px; 
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+          }
+          .link-text {
+            word-break: break-all; 
+            background: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 5px;
+            margin: 15px 0;
+            font-size: 14px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">💪 RayoStrength</div>
+            <h2>¡Bienvenido a RayoStrength!</h2>
+          </div>
+          
+          <p>Hola,</p>
+          <p>Para activar tu cuenta y comenzar tu journey fitness, haz clic en el siguiente botón:</p>
+          
+          <div style="text-align: center;">
+            <a href="${enlaceVerificacion}" class="button" style="color: white; text-decoration: none;">
+              Verificar Mi Cuenta
+            </a>
+          </div>
+          
+          <p>Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
+          <p class="link-text">
+            ${enlaceVerificacion}
+          </p>
+          
+          <p><strong>⚠️ Este enlace expirará en 24 horas.</strong></p>
+          
+          <p>Si no creaste esta cuenta, puedes ignorar este mensaje.</p>
+          
+          <div class="footer">
+            <p>© 2024 RayoStrength. Todos los derechos reservados.</p>
+            <p>Este es un email automático, por favor no respondas a este mensaje.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+    text: `Verifica tu cuenta de RayoStrength: ${enlaceVerificacion}\n\nSi no creaste esta cuenta, ignora este mensaje.`
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(' Email de verificación enviado a:', email);
+    return true;
+  } catch (error) {
+    console.error(' Error enviando email:', error);
+    console.log('🔗 Enlace de verificación (fallback):', enlaceVerificacion);
+    return false;
   }
 }
 
