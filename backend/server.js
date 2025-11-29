@@ -56,11 +56,11 @@ async function enviarEmailVerificacion(email, token) {
       <head>
         <meta charset="utf-8">
         <style>
-          body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px; }
+          body { font-family: Arial, sans-serif; background-color: #0e0d0dff; margin: 0; padding: 20px; }
           .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; padding: 30px; }
           .header { text-align: center; margin-bottom: 30px; }
-          .logo { color: #dfdc41ff; font-size: 24px; font-weight: bold; }
-          .button { display: inline-block; background: #d6d439ff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+          .logo { color: #b48318ff; font-size: 24px; font-weight: bold; }
+          .button { display: inline-block; background: #4259beff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
         </style>
       </head>
       <body>
