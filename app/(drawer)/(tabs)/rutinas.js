@@ -20,7 +20,6 @@ const BASE_URL = 'https://rayostrength-production.up.railway.app';
 
 export default function RutinasScreen() {
   const router = useRouter();
-  const [notasCliente, setNotasCliente] = useState({});
   const [setsCompletados, setSetsCompletados] = useState({});
   const [rutina, setRutina] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -31,6 +30,8 @@ export default function RutinasScreen() {
   const [ejercicioEditando, setEjercicioEditando] = useState(null);
   const [repsTemp, setRepsTemp] = useState('');
   const [pesoTemp, setPesoTemp] = useState('');
+  const [notaGeneral, setNotaGeneral] = useState('');
+  const [rutinaCompletada, setRutinaCompletada] = useState(false);
 
   useEffect(() => {
     const obtenerToken = async () => {
@@ -197,11 +198,11 @@ export default function RutinasScreen() {
         }
       }));
 
-      Alert.alert('Exito', 'Datos guardados correctamente');
+      Alert.alert('✅ Exito', 'Datos guardados correctamente');
     } catch (error) {
       console.error('Error guardarDatosReales:', error);
       Alert.alert(
-        'Error al guardar',
+        '❌ Error al guardar',
         error.message || 'No se pudieron guardar los datos. Verifica tu conexion.'
       );
     }
@@ -225,7 +226,7 @@ export default function RutinasScreen() {
         reps_logradas: realesData[ejercicioId]?.repsReales || ejercicio?.repeticiones,
         peso_utilizado: realesData[ejercicioId]?.pesoReal || ejercicio?.pesoSugerido,
         rir_final: ejercicio?.rir,
-        notas: notasCliente[ejercicioId] || `Completado: ${setsCompletadosCount}/${ejercicio?.series} sets`
+        notas: `Completado: ${setsCompletadosCount}/${ejercicio?.series} sets`
       };
 
       console.log('Guardando progreso de sets:', payload);
@@ -245,10 +246,7 @@ export default function RutinasScreen() {
         console.log('Sets guardados correctamente');
       }
 
-      if (setsCompletadosCount === ejercicio?.series) {
-        console.log('Ejercicio completado!');
-        verificarRutinaCompletada();
-      }
+      verificarRutinaCompletada();
 
     } catch (error) {
       console.error('Error en toggleSet:', error);
@@ -263,24 +261,10 @@ export default function RutinasScreen() {
         return setsCompletadosCount === ejercicio.series;
       }).length;
 
-      const porcentajeCompletitud = (ejerciciosCompletados / rutina.ejercicios.length) * 100;
+      const todosCompletados = ejerciciosCompletados === rutina.ejercicios.length;
 
-      if (porcentajeCompletitud >= 80 && ejerciciosCompletados < rutina.ejercicios.length) {
-        Alert.alert(
-          "Rutina completada?",
-          `Has completado ${ejerciciosCompletados} de ${rutina.ejercicios.length} ejercicios. Quieres marcar la rutina como completada?`,
-          [
-            { text: "No, aun no", style: "cancel" },
-            { 
-              text: "Si, completada", 
-              onPress: () => registrarSesionCompletada(ejerciciosCompletados) 
-            }
-          ]
-        );
-      }
-
-      if (ejerciciosCompletados === rutina.ejercicios.length) {
-        registrarSesionCompletada(ejerciciosCompletados);
+      if (todosCompletados) {
+        setShowModalCompletar(true);
       }
 
     } catch (error) {
@@ -288,8 +272,30 @@ export default function RutinasScreen() {
     }
   };
 
-  const registrarSesionCompletada = async (ejerciciosCompletados) => {
+  const marcarTodosLosSets = () => {
+    const nuevosSets = { ...setsCompletados };
+    
+    rutina.ejercicios.forEach(ejercicio => {
+      if (!nuevosSets[ejercicio.id]) {
+        nuevosSets[ejercicio.id] = {};
+      }
+      
+      for (let setNum = 1; setNum <= ejercicio.series; setNum++) {
+        nuevosSets[ejercicio.id][setNum] = true;
+      }
+    });
+    
+    setSetsCompletados(nuevosSets);
+    setShowModalCompletar(true);
+  };
+
+  const registrarSesionCompletada = async () => {
     try {
+      const ejerciciosCompletados = rutina.ejercicios.filter(ejercicio => {
+        const setsCompletadosCount = Object.values(setsCompletados[ejercicio.id] || {}).filter(Boolean).length;
+        return setsCompletadosCount === ejercicio.series;
+      }).length;
+
       const volumenTotal = rutina.ejercicios.reduce((total, ejercicio) => {
         const peso = parseFloat(realesData[ejercicio.id]?.pesoReal || '0') || 0;
         const series = ejercicio.series || 0;
@@ -297,7 +303,7 @@ export default function RutinasScreen() {
         return total + (peso * series * reps);
       }, 0);
 
-      await fetch(`${BASE_URL}/api/progreso/registrar-sesion`, {
+      const response = await fetch(`${BASE_URL}/api/progreso/registrar-sesion`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${userToken}`,
@@ -309,49 +315,28 @@ export default function RutinasScreen() {
           ejercicios_completados: ejerciciosCompletados,
           duracion_total_minutos: 60,
           volumen_total: volumenTotal,
-          notas_usuario: 'Rutina personalizada completada'
+          notas_usuario: notaGeneral || 'Rutina personalizada completada'
         }),
       });
 
-      Alert.alert("Rutina Completada", "Tu progreso ha sido guardado correctamente");
-      setShowModalCompletar(false);
+      if (response.ok) {
+        setRutinaCompletada(true);
+        Alert.alert("🎉 Rutina Completada", "Tu progreso ha sido guardado correctamente y tu coach ha sido notificado");
+        setShowModalCompletar(false);
+        setNotaGeneral('');
+      } else {
+        throw new Error('Error al registrar sesion');
+      }
 
     } catch (error) {
       console.error('Error registrando sesion completada:', error);
-      Alert.alert("Error", "No se pudo guardar la sesion completada");
-    }
-  };
-
-  const guardarNotas = async (ejercicioId, texto) => {
-    const nuevasNotas = { ...notasCliente, [ejercicioId]: texto };
-    setNotasCliente(nuevasNotas);
-
-    try {
-      const ejercicio = rutina.ejercicios.find(e => e.id === ejercicioId);
-      const setsCompletadosCount = Object.values(setsCompletados[ejercicioId] || {}).filter(Boolean).length;
-      
-      await fetch(`${BASE_URL}/api/progreso/guardar-ejercicio`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${userToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id_ejercicio: ejercicioId,
-          nombre_ejercicio: ejercicio?.nombre,
-          sets_completados: setsCompletadosCount,
-          reps_logradas: realesData[ejercicioId]?.repsReales || ejercicio?.repeticiones,
-          peso_utilizado: realesData[ejercicioId]?.pesoReal || ejercicio?.pesoSugerido,
-          rir_final: ejercicio?.rir,
-          notas: texto
-        }),
-      });
-    } catch (error) {
-      console.error('Error guardando notas:', error);
+      Alert.alert("❌ Error", "No se pudo guardar la sesion completada");
     }
   };
 
   const renderItem = ({ item, index }) => {
+    if (rutinaCompletada) return null;
+
     const ejercicio = {
       id: item.id || `ej-${index}`,
       grupoMuscular: item.grupoMuscular || 'General',
@@ -362,8 +347,6 @@ export default function RutinasScreen() {
       rir: item.rir || 0,
       descanso: item.descanso || ''
     };
-
-    console.log('Renderizando ejercicio:', ejercicio.nombre);
 
     const datosReales = realesData[ejercicio.id];
     const setsCompletadosCount = Object.values(setsCompletados[ejercicio.id] || {}).filter(Boolean).length;
@@ -386,18 +369,18 @@ export default function RutinasScreen() {
           <TouchableOpacity onPress={() => Linking.openURL(ejercicio.video)}>
             <View style={styles.row}>
               <Ionicons name="play-circle" size={20} color={colors.icon} />
-              <Text style={styles.videoText}>Ver video</Text>
+              <Text style={styles.videoText}>🎥 Ver video</Text>
             </View>
           </TouchableOpacity>
         )}
 
         <Text style={styles.details}>
-          Series {ejercicio.series} / Reps {ejercicio.repeticiones} {ejercicio.rir ? `/ RIR ${ejercicio.rir}` : ''} {ejercicio.descanso ? `/ Descanso ${ejercicio.descanso}` : ''}
+          📊 Series {ejercicio.series} / Reps {ejercicio.repeticiones} {ejercicio.rir ? `/ RIR ${ejercicio.rir}` : ''} {ejercicio.descanso ? `/ ⏱️ Descanso ${ejercicio.descanso}` : ''}
         </Text>
 
         {datosReales && (
           <View style={styles.realesContainer}>
-            <Text style={styles.realesTitle}>Tus datos reales:</Text>
+            <Text style={styles.realesTitle}>✅ Tus datos reales:</Text>
             <Text style={styles.realesText}>
               Reps: {datosReales.repsReales} | Peso: {datosReales.pesoReal}
             </Text>
@@ -429,21 +412,9 @@ export default function RutinasScreen() {
         >
           <Ionicons name="create-outline" size={16} color={colors.text} />
           <Text style={styles.textoBotonReales}>
-            {datosReales ? 'Editar peso y reps' : 'Registrar peso y reps reales'}
+            {datosReales ? '✏️ Editar peso y reps' : '📝 Registrar peso y reps reales'}
           </Text>
         </TouchableOpacity>
-
-        <View style={styles.feedbackBox}>
-          <Text style={styles.feedbackLabel}>Nota Cliente:</Text>
-          <TextInput
-            placeholder="Como me senti?"
-            placeholderTextColor={colors.placeholder}
-            value={notasCliente[ejercicio.id] || ""}
-            onChangeText={(text) => guardarNotas(ejercicio.id, text)}
-            style={styles.feedbackInput}
-            multiline
-          />
-        </View>
       </View>
     );
   };
@@ -457,14 +428,41 @@ export default function RutinasScreen() {
     );
   }
 
+  if (rutinaCompletada) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.completadaContainer}>
+          <Ionicons name="checkmark-circle" size={80} color={colors.active} />
+          <Text style={styles.completadaTitle}>🎉 Rutina Completada</Text>
+          <Text style={styles.completadaText}>
+            ¡Excelente trabajo! Tu rutina ha sido completada y guardada.
+          </Text>
+          <Text style={styles.completadaSubtext}>
+            Tu coach ha sido notificado de tu progreso
+          </Text>
+          <TouchableOpacity 
+            style={styles.botonNuevaRutina}
+            onPress={() => {
+              setRutinaCompletada(false);
+              setSetsCompletados({});
+              setRealesData({});
+            }}
+          >
+            <Text style={styles.textoBotonNuevaRutina}>🔄 Nueva Rutina</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {rutina?.personalizada ? (
         <View style={styles.headerCompact}>
           <View style={styles.infoContainer}>
-            <Text style={styles.coachText}>Creada por: {rutina.coach}</Text>
+            <Text style={styles.coachText}>👤 Creada por: {rutina.coach}</Text>
             <Text style={styles.syncText}>
-              Ultima actualizacion: {new Date().toLocaleDateString()}
+              📅 Ultima actualizacion: {new Date().toLocaleDateString()}
             </Text>
           </View>
         </View>
@@ -482,7 +480,6 @@ export default function RutinasScreen() {
         data={rutina?.ejercicios || []}
         keyExtractor={(item, index) => {
           const key = item.id || `ej-${index}`;
-          console.log('Key para ejercicio:', key);
           return key;
         }}
         renderItem={renderItem}
@@ -493,8 +490,8 @@ export default function RutinasScreen() {
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
               {rutina?.personalizada === false 
-                ? 'No tienes rutina personalizada asignada' 
-                : 'No hay ejercicios disponibles'
+                ? '📝 No tienes rutina personalizada asignada' 
+                : '❌ No hay ejercicios disponibles'
               }
             </Text>
             <Text style={styles.emptySubtext}>
@@ -505,19 +502,13 @@ export default function RutinasScreen() {
       />
 
       {rutina?.ejercicios && rutina.ejercicios.length > 0 && (
-        <TouchableOpacity 
-          style={styles.botonCompletarRutina}
-          onPress={() => {
-            const ejerciciosCompletados = rutina.ejercicios.filter(ejercicio => {
-              const setsCompletadosCount = Object.values(setsCompletados[ejercicio.id] || {}).filter(Boolean).length;
-              return setsCompletadosCount === ejercicio.series;
-            }).length;
-            registrarSesionCompletada(ejerciciosCompletados);
-          }}
-        >
-          <Text style={styles.textoBotonCompletarRutina}>Completar Rutina</Text>
-        </TouchableOpacity>
-      )}
+  <TouchableOpacity 
+    style={styles.botonCompletarRutina}
+    onPress={() => setShowModalCompletar(true)}
+  >
+    <Text style={styles.textoBotonCompletarRutina}>✅ Completar Rutina</Text>
+  </TouchableOpacity>
+)}
 
       <Modal
         visible={!!ejercicioEditando}
@@ -527,7 +518,7 @@ export default function RutinasScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Peso y Repeticiones Realizadas - {ejercicioEditando?.nombre}</Text>
+            <Text style={styles.modalTitle}>📊 Peso y Repeticiones Realizadas - {ejercicioEditando?.nombre}</Text>
             
             <View style={styles.modalField}>
               <Text style={styles.modalLabel}>Repeticiones Realizadas:</Text>
@@ -558,7 +549,7 @@ export default function RutinasScreen() {
                 style={[styles.modalButton, styles.modalButtonCancel]}
                 onPress={() => setEjercicioEditando(null)}
               >
-                <Text style={styles.modalButtonTextCancel}>Cancelar</Text>
+                <Text style={styles.modalButtonTextCancel}>❌ Cancelar</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
@@ -570,7 +561,7 @@ export default function RutinasScreen() {
                   setEjercicioEditando(null);
                 }}
               >
-                <Text style={styles.modalButtonTextSave}>Guardar</Text>
+                <Text style={styles.modalButtonTextSave}>💾 Guardar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -584,33 +575,40 @@ export default function RutinasScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Completar Rutina</Text>
+            <Text style={styles.modalTitle}>✅ Completar Rutina</Text>
             <Text style={styles.modalText}>
-              Estas seguro de que quieres marcar esta rutina como completada?
+              ¿Estás seguro de que quieres marcar esta rutina como completada?
             </Text>
             <Text style={styles.modalSubtext}>
-              Se guardaran todos tus datos de progreso.
+              Se guardarán todos tus datos de progreso y tu coach será notificado.
             </Text>
+            
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>💭 Nota general para tu coach:</Text>
+              <TextInput
+                style={[styles.modalInput, styles.textArea]}
+                value={notaGeneral}
+                onChangeText={setNotaGeneral}
+                placeholder="¿Cómo te sentiste en la rutina? ¿Alguna observación?"
+                placeholderTextColor={colors.placeholder}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
             
             <View style={styles.modalButtons}>
               <TouchableOpacity 
                 style={[styles.modalButton, styles.modalButtonCancel]}
                 onPress={() => setShowModalCompletar(false)}
               >
-                <Text style={styles.modalButtonTextCancel}>Cancelar</Text>
+                <Text style={styles.modalButtonTextCancel}>❌ Cancelar</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
                 style={[styles.modalButton, styles.modalButtonConfirm]}
-                onPress={() => {
-                  const ejerciciosCompletados = rutina.ejercicios.filter(ejercicio => {
-                    const setsCompletadosCount = Object.values(setsCompletados[ejercicio.id] || {}).filter(Boolean).length;
-                    return setsCompletadosCount === ejercicio.series;
-                  }).length;
-                  registrarSesionCompletada(ejerciciosCompletados);
-                }}
+                onPress={registrarSesionCompletada}
               >
-                <Text style={styles.modalButtonTextConfirm}>Si, Completar</Text>
+                <Text style={styles.modalButtonTextConfirm}>✅ Si, Completar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -624,6 +622,43 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  completadaContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  completadaTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: colors.active,
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  completadaText: {
+    fontSize: 18,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  completadaSubtext: {
+    fontSize: 14,
+    color: colors.placeholder,
+    textAlign: 'center',
+    marginBottom: 30,
+  },
+  botonNuevaRutina: {
+    backgroundColor: colors.active,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    minWidth: 200,
+  },
+  textoBotonNuevaRutina: {
+    color: colors.card,
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   headerCompact: {
     padding: 16,
@@ -746,24 +781,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 4,
   },
-  feedbackBox: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 8,
-    margin: 16,
-    marginTop: 0,
-  },
-  feedbackLabel: {
-    fontWeight: "600",
-    marginBottom: 4,
-    color: colors.text,
-  },
-  feedbackInput: {
-    fontSize: 14,
-    minHeight: 40,
-    color: colors.text,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -793,14 +810,32 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  botonCompletarRutina: {
-    backgroundColor: colors.active,
+  botonesContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginBottom: 24,
+    gap: 10,
+  },
+  botonCompletarRapido: {
+    flex: 1,
+    backgroundColor: colors.secondary,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 24,
   },
+  botonCompletarRutina: {
+  backgroundColor: colors.active,
+  padding: 16,
+  borderRadius: 12,
+  alignItems: 'center',
+  marginHorizontal: 16,
+  marginBottom: 24,
+},
+textoBotonCompletarRutina: {
+  color: colors.card,
+  fontSize: 16,
+  fontWeight: 'bold',
+},
   textoBotonCompletarRutina: {
     color: colors.card,
     fontSize: 16,
@@ -856,6 +891,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     backgroundColor: colors.background,
     fontSize: 16,
+  },
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
   modalButtons: {
     flexDirection: 'row',

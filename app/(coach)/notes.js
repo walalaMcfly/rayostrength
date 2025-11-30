@@ -37,7 +37,6 @@ const CoachNotesScreen = ({ route, navigation }) => {
       }
     } catch (error) {
       console.error('Error cargando notas:', error);
-      Alert.alert('Error', 'No se pudieron cargar las notas');
     } finally {
       setLoading(false);
     }
@@ -82,17 +81,44 @@ const CoachNotesScreen = ({ route, navigation }) => {
     }
   };
 
+  const marcarComoLeido = async (idNota) => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      
+      const response = await fetch(`https://rayostrength-production.up.railway.app/api/coach/notas/${idNota}/leido`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        cargarNotas();
+      }
+    } catch (error) {
+      console.error('Error marcando como leído:', error);
+    }
+  };
+
   const renderNota = ({ item }) => (
     <View style={styles.notaContainer}>
       <View style={styles.notaHeader}>
-        <Text style={styles.coachNombre}>{item.coach_nombre} {item.coach_apellido}</Text>
+        <Text style={styles.coachNombre}>Para: {cliente.nombre} {cliente.apellido}</Text>
         <Text style={styles.fechaNota}>
-          {new Date(item.fecha_creacion).toLocaleDateString()} - {new Date(item.fecha_creacion).toLocaleTimeString()}
+          {new Date(item.fecha_creacion).toLocaleDateString()}
         </Text>
       </View>
       <Text style={styles.mensajeNota}>{item.mensaje}</Text>
-      {item.leido && (
-        <Text style={styles.estadoLeido}>✓ Leído por el cliente</Text>
+      
+      {!item.leido ? (
+        <TouchableOpacity 
+          style={styles.botonLeido}
+          onPress={() => marcarComoLeido(item.id_nota)}
+        >
+          <Text style={styles.textoBotonLeido}>✅ Marcar como leído</Text>
+        </TouchableOpacity>
+      ) : (
+        <Text style={styles.estadoLeido}>✓ Leído</Text>
       )}
     </View>
   );
@@ -108,7 +134,10 @@ const CoachNotesScreen = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.titulo}>Notas para {cliente.nombre}</Text>
+      <View style={styles.header}>
+        <Text style={styles.titulo}>📝 Notas para {cliente.nombre}</Text>
+        <Text style={styles.subtitulo}>{cliente.email}</Text>
+      </View>
       
       <View style={styles.formContainer}>
         <Text style={styles.label}>Nueva Nota</Text>
@@ -119,7 +148,7 @@ const CoachNotesScreen = ({ route, navigation }) => {
           value={nuevaNota}
           onChangeText={setNuevaNota}
           multiline
-          numberOfLines={4}
+          numberOfLines={3}
           textAlignVertical="top"
         />
         
@@ -129,19 +158,26 @@ const CoachNotesScreen = ({ route, navigation }) => {
           disabled={enviando}
         >
           <Text style={styles.textoBoton}>
-            {enviando ? 'Enviando...' : 'Enviar Nota'}
+            {enviando ? 'Enviando...' : '📤 Enviar Nota'}
           </Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.subtitulo}>Notas Anteriores</Text>
-      <FlatList
-        data={notas}
-        renderItem={renderNota}
-        keyExtractor={item => item.id_nota.toString()}
-        style={styles.listaNotas}
-        showsVerticalScrollIndicator={false}
-      />
+      <Text style={styles.seccionTitulo}>📋 Notas Anteriores</Text>
+      
+      {notas.length === 0 ? (
+        <View style={styles.sinNotas}>
+          <Text style={styles.sinNotasTexto}>No hay notas aún</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={notas}
+          renderItem={renderNota}
+          keyExtractor={item => item.id_nota.toString()}
+          style={styles.listaNotas}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </View>
   );
 };
@@ -151,6 +187,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     padding: 16,
+  },
+  header: {
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  titulo: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  subtitulo: {
+    fontSize: 14,
+    color: colors.placeholder,
   },
   cargandoContainer: {
     flex: 1,
@@ -162,13 +214,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: colors.text,
     fontSize: 16,
-  },
-  titulo: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 20,
-    textAlign: 'center',
   },
   formContainer: {
     backgroundColor: colors.card,
@@ -190,7 +235,7 @@ const styles = StyleSheet.create({
     padding: 12,
     color: colors.text,
     marginBottom: 16,
-    minHeight: 100,
+    minHeight: 80,
   },
   boton: {
     backgroundColor: colors.active,
@@ -206,7 +251,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  subtitulo: {
+  seccionTitulo: {
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.text,
@@ -214,6 +259,16 @@ const styles = StyleSheet.create({
   },
   listaNotas: {
     flex: 1,
+  },
+  sinNotas: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sinNotasTexto: {
+    fontSize: 16,
+    color: colors.placeholder,
+    textAlign: 'center',
   },
   notaContainer: {
     backgroundColor: colors.card,
@@ -227,7 +282,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   coachNombre: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
     color: colors.text,
   },
@@ -239,11 +294,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text,
     lineHeight: 20,
+    marginBottom: 8,
+  },
+  botonLeido: {
+    backgroundColor: colors.success,
+    padding: 8,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  textoBotonLeido: {
+    color: colors.card,
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   estadoLeido: {
     fontSize: 12,
-    color: '#4CAF50',
-    marginTop: 8,
+    color: colors.success,
     fontStyle: 'italic',
   },
 });

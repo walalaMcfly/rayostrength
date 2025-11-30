@@ -2458,4 +2458,116 @@ app.get('/api/email-status', (req, res) => {
   });
 });
 
+
+
+// Endpoint para obtener notas del cliente
+app.get('/api/coach/cliente/:idCliente/notas', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'coach') {
+      return res.status(403).json({
+        success: false,
+        message: 'Acceso denegado. Solo para coaches.'
+      });
+    }
+
+    const { idCliente } = req.params;
+    const idCoach = req.user.coachId;
+
+    const [notas] = await pool.execute(
+      `SELECT nc.*, c.nombre as coach_nombre, c.apellido as coach_apellido,
+              u.nombre as cliente_nombre, u.apellido as cliente_apellido
+       FROM NotasCoach nc
+       JOIN Coach c ON nc.id_coach = c.id_coach
+       JOIN Usuario u ON nc.id_cliente = u.id_usuario
+       WHERE nc.id_cliente = ? AND nc.id_coach = ?
+       ORDER BY nc.fecha_creacion DESC`,
+      [idCliente, idCoach]
+    );
+
+    res.json({
+      success: true,
+      notas: notas
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo notas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// Endpoint para crear nueva nota
+app.post('/api/coach/notas', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'coach') {
+      return res.status(403).json({
+        success: false,
+        message: 'Acceso denegado. Solo para coaches.'
+      });
+    }
+
+    const { id_cliente, mensaje } = req.body;
+    const id_coach = req.user.coachId;
+
+    if (!id_cliente || !mensaje) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID del cliente y mensaje son requeridos'
+      });
+    }
+
+    const [result] = await pool.execute(
+      `INSERT INTO NotasCoach (id_coach, id_cliente, mensaje) 
+       VALUES (?, ?, ?)`,
+      [id_coach, id_cliente, mensaje]
+    );
+
+    res.json({
+      success: true,
+      message: 'Nota creada correctamente',
+      id_nota: result.insertId
+    });
+
+  } catch (error) {
+    console.error('Error creando nota:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// Endpoint para marcar nota como leída
+app.put('/api/coach/notas/:idNota/leido', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'coach') {
+      return res.status(403).json({
+        success: false,
+        message: 'Acceso denegado. Solo para coaches.'
+      });
+    }
+
+    const { idNota } = req.params;
+
+    await pool.execute(
+      'UPDATE NotasCoach SET leido = TRUE WHERE id_nota = ?',
+      [idNota]
+    );
+
+    res.json({
+      success: true,
+      message: 'Nota marcada como leída'
+    });
+
+  } catch (error) {
+    console.error('Error marcando nota como leída:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
 startServer();

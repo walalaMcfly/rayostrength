@@ -74,8 +74,6 @@ export default function ProgresoScreen() {
         
         if (result.success) {
           datosReales = result.progressData || result.data || result.estadisticas;
-          
-          // Cargar historial de pesos para el gráfico
           await cargarHistorialPesos(token);
         }
       }
@@ -121,7 +119,7 @@ export default function ProgresoScreen() {
       
       Alert.alert(
         'Error de conexión', 
-        'No se pudieron cargar los datos de progreso. Verifica tu conexión.'
+        'No se pudieron cargar los datos de progreso.'
       );
     } finally {
       setLoading(false);
@@ -131,7 +129,6 @@ export default function ProgresoScreen() {
 
   const cargarHistorialPesos = async (token) => {
     try {
-      // Endpoint para obtener el historial de pesos (necesitarás crearlo en el backend)
       const response = await fetch(`${BASE_URL}/api/progreso/historial-pesos`, {
         method: 'GET',
         headers: {
@@ -146,23 +143,20 @@ export default function ProgresoScreen() {
           setHistorialPesos(result.historial || []);
         }
       } else {
-        // Si no existe el endpoint, crear datos de ejemplo basados en los records
         generarDatosEjemplo();
       }
     } catch (error) {
-      console.log('Error cargando historial, usando datos de ejemplo');
       generarDatosEjemplo();
     }
   };
 
   const generarDatosEjemplo = () => {
-    // Datos de ejemplo para el gráfico
     const fechas = ['1 Mar', '8 Mar', '15 Mar', '22 Mar', '29 Mar', '5 Abr'];
     const pesos = [40, 45, 42, 48, 50, 52];
     
     const historialEjemplo = fechas.map((fecha, index) => ({
       fecha,
-      peso: pesos[index],
+      peso: Number(pesos[index]) || 0,
       ejercicio: `Ejercicio ${index + 1}`
     }));
     
@@ -193,7 +187,6 @@ export default function ProgresoScreen() {
         volumenSemanal: datos.estadisticas.volumenSemanal || 0,
         fuerzaProgreso: datos.estadisticas.fuerzaProgreso || 0,
         consistencia: datos.estadisticas.consistencia || 0,
-        // Nuevas métricas
         seriesTotales: datos.estadisticas.seriesTotales || 0,
         diasEntrenados: datos.estadisticas.diasEntrenados || 0,
         volumenTotal: datos.estadisticas.volumenTotal || 0,
@@ -217,16 +210,6 @@ export default function ProgresoScreen() {
       mejorRecord: 0,
       pesoPromedio: 0
     };
-  };
-
-  const calcularConsistencia = (rutinasSemanales) => {
-    if (rutinasSemanales.length < 2) return 100;
-    
-    const promedio = rutinasSemanales.reduce((a, b) => a + b, 0) / rutinasSemanales.length;
-    const variaciones = rutinasSemanales.map(val => Math.abs(val - promedio));
-    const variacionPromedio = variaciones.reduce((a, b) => a + b, 0) / variaciones.length;
-    
-    return Math.max(0, 100 - (variacionPromedio / promedio * 100));
   };
 
   const onRefresh = () => {
@@ -291,12 +274,20 @@ export default function ProgresoScreen() {
       }
       
     } catch (error) {
-      Alert.alert("Error de conexión", "No se pudo conectar con el servidor: " + error.message);
+      Alert.alert("Error de conexión", "No se pudo conectar con el servidor");
     }
   };
 
+  const asegurarDatosNumericos = (datos) => {
+    if (!Array.isArray(datos)) return [0];
+    return datos.map(item => {
+      const num = Number(item);
+      return isNaN(num) ? 0 : Math.max(0, num);
+    });
+  };
+
   const renderGraficoProgreso = () => {
-    if (historialPesos.length === 0) {
+    if (!historialPesos || historialPesos.length === 0) {
       return (
         <View style={styles.graficoContainer}>
           <Text style={styles.subtitulo}>📈 Progreso de Pesos</Text>
@@ -312,11 +303,29 @@ export default function ProgresoScreen() {
       );
     }
 
+    const datosPesos = asegurarDatosNumericos(historialPesos.map(item => item.peso));
+    const etiquetas = historialPesos.map(item => item.fecha || 'Fecha');
+
+    const tieneDatosValidos = datosPesos.some(peso => peso > 0);
+
+    if (!tieneDatosValidos) {
+      return (
+        <View style={styles.graficoContainer}>
+          <Text style={styles.subtitulo}>📈 Progreso de Pesos</Text>
+          <View style={styles.sinDatosGrafico}>
+            <Text style={styles.sinDatosTexto}>
+              Registra pesos mayores a 0 para ver tu progreso
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
     const datosGrafico = {
-      labels: historialPesos.map(item => item.fecha),
+      labels: etiquetas,
       datasets: [
         {
-          data: historialPesos.map(item => item.peso),
+          data: datosPesos,
           color: (opacity = 1) => `rgba(134, 65, 244, ${opacity})`,
           strokeWidth: 2
         }
@@ -340,7 +349,7 @@ export default function ProgresoScreen() {
           <Text style={styles.infoGraficoTitulo}>Tu Progreso</Text>
           <Text style={styles.infoGraficoTexto}>
             {historialPesos.length > 1 ? 
-              `Has aumentado ${historialPesos[historialPesos.length - 1].peso - historialPesos[0].peso}kg en ${historialPesos.length} semanas` :
+              `Has aumentado ${datosPesos[datosPesos.length - 1] - datosPesos[0]}kg en ${historialPesos.length} semanas` :
               'Continúa registrando para ver tu progreso'
             }
           </Text>
@@ -351,13 +360,12 @@ export default function ProgresoScreen() {
 
   const renderResumen = () => (
     <View style={styles.seccion}>
-      <Text style={styles.tituloSeccion}>Tu Progreso</Text>
+      <Text style={styles.tituloSeccion}>📊 Tu Progreso</Text>
       
       {estadisticas.rutinasCompletadas === 0 ? (
         <View style={styles.avisoContainer}>
           <Text style={styles.avisoTexto}>
-            🏋️‍♂️ Aún no tienes datos de entrenamiento. 
-            {"\n"}Completa algunas rutinas registrando tus pesos y series para ver tu progreso aquí.
+            🏋️‍♂️ Aún no tienes datos de entrenamiento. Completa algunas rutinas registrando tus pesos y series para ver tu progreso aquí.
           </Text>
           <TouchableOpacity style={styles.botonAccion} onPress={onRefresh}>
             <Text style={styles.textoBotonAccion}>🔄 Actualizar</Text>
@@ -365,11 +373,10 @@ export default function ProgresoScreen() {
         </View>
       ) : (
         <>
-          {/* Estadísticas Principales */}
           <View style={styles.estadisticasGrid}>
             <View style={styles.estadisticaCard}>
               <Text style={styles.estadisticaNumero}>{estadisticas.mejorRecord}kg</Text>
-              <Text style={styles.estadisticaLabel}>Mejor Record</Text>
+              <Text style={styles.estadisticaLabel}>🏆 Mejor Record</Text>
               <Text style={styles.estadisticaSubtexto}>
                 {progressData?.topRecords?.[0]?.nombre_ejercicio || 'Tu máximo'}
               </Text>
@@ -377,7 +384,7 @@ export default function ProgresoScreen() {
 
             <View style={styles.estadisticaCard}>
               <Text style={styles.estadisticaNumero}>{estadisticas.volumenTotal}</Text>
-              <Text style={styles.estadisticaLabel}>Volumen Total</Text>
+              <Text style={styles.estadisticaLabel}>💪 Volumen Total</Text>
               <Text style={styles.estadisticaSubtexto}>
                 {estadisticas.pesoPromedio}kg × {estadisticas.seriesTotales} series
               </Text>
@@ -385,7 +392,7 @@ export default function ProgresoScreen() {
 
             <View style={styles.estadisticaCard}>
               <Text style={styles.estadisticaNumero}>{estadisticas.rutinasCompletadas}</Text>
-              <Text style={styles.estadisticaLabel}>Rutinas Completadas</Text>
+              <Text style={styles.estadisticaLabel}>✅ Rutinas Completadas</Text>
               <Text style={styles.estadisticaSubtexto}>
                 {estadisticas.porcentajeCompletitud}% de efectividad
               </Text>
@@ -393,7 +400,7 @@ export default function ProgresoScreen() {
 
             <View style={styles.estadisticaCard}>
               <Text style={styles.estadisticaNumero}>{estadisticas.consistencia}%</Text>
-              <Text style={styles.estadisticaLabel}>Consistencia</Text>
+              <Text style={styles.estadisticaLabel}>🔥 Consistencia</Text>
               <Text style={styles.estadisticaSubtexto}>
                 {estadisticas.consistencia > 70 ? '🔥 Excelente' : 
                  estadisticas.consistencia > 40 ? '💪 Bueno' : '⚡ Puedes mejorar'}
@@ -401,33 +408,30 @@ export default function ProgresoScreen() {
             </View>
           </View>
 
-          {/* Gráfico de Progreso */}
           {renderGraficoProgreso()}
 
-          {/* Métricas de Entrenamiento */}
           <View style={styles.metricasContainer}>
             <Text style={styles.subtitulo}>📊 Métricas de Entrenamiento</Text>
             <View style={styles.metricasGrid}>
               <View style={styles.metricaItem}>
                 <Text style={styles.metricaValor}>{estadisticas.mejorRPE || 0}</Text>
-                <Text style={styles.metricaLabel}>Mejor RPE</Text>
+                <Text style={styles.metricaLabel}>💥 Mejor RPE</Text>
               </View>
               <View style={styles.metricaItem}>
                 <Text style={styles.metricaValor}>{estadisticas.promedioRIR || 0}</Text>
-                <Text style={styles.metricaLabel}>RIR Promedio</Text>
+                <Text style={styles.metricaLabel}>📏 RIR Promedio</Text>
               </View>
               <View style={styles.metricaItem}>
                 <Text style={styles.metricaValor}>{estadisticas.diasEntrenados || 0}</Text>
-                <Text style={styles.metricaLabel}>Días Entrenados</Text>
+                <Text style={styles.metricaLabel}>📅 Días Entrenados</Text>
               </View>
               <View style={styles.metricaItem}>
                 <Text style={styles.metricaValor}>{estadisticas.fuerzaProgreso || 0}%</Text>
-                <Text style={styles.metricaLabel}>Progreso Fuerza</Text>
+                <Text style={styles.metricaLabel}>🚀 Progreso Fuerza</Text>
               </View>
             </View>
           </View>
 
-          {/* Records Personales */}
           {progressData?.topRecords && progressData.topRecords.length > 0 && (
             <View style={styles.recordsContainer}>
               <Text style={styles.subtitulo}>🏆 Tus Records Personales</Text>
@@ -445,7 +449,6 @@ export default function ProgresoScreen() {
             </View>
           )}
 
-          {/* Sesiones Recientes */}
           {progressData?.sesionesRecientes && progressData.sesionesRecientes.length > 0 && (
             <View style={styles.sesionesContainer}>
               <Text style={styles.subtitulo}>📅 Sesiones Recientes</Text>
@@ -505,7 +508,7 @@ export default function ProgresoScreen() {
       </TouchableOpacity>
 
       <View style={styles.wellnessInfo}>
-        <Text style={styles.wellnessInfoTitulo}>¿Por qué es importante el Wellness?</Text>
+        <Text style={styles.wellnessInfoTitulo}>💡 ¿Por qué es importante el Wellness?</Text>
         <Text style={styles.wellnessInfoText}>
           Tu recuperación diaria afecta directamente tu rendimiento. Un wellness bajo puede indicar que necesitas más descanso o ajustar la intensidad. Tu coach verá estos datos para personalizar tu entrenamiento.
         </Text>
@@ -525,7 +528,7 @@ export default function ProgresoScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.tituloPrincipal}>Mi Progreso</Text>
+        <Text style={styles.tituloPrincipal}>📊 Mi Progreso</Text>
         <TouchableOpacity style={styles.botonRecargar} onPress={onRefresh}>
           <Text style={styles.textoBotonRecargar}>🔄</Text>
         </TouchableOpacity>
@@ -589,6 +592,10 @@ const chartConfig = {
     strokeDasharray: "",
     stroke: colors.border,
     strokeWidth: 1
+  },
+  formatYLabel: (yValue) => {
+    const num = Number(yValue);
+    return isNaN(num) ? '0' : Math.round(num).toString();
   }
 };
 
