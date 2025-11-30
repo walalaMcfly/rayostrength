@@ -1206,24 +1206,24 @@ app.post('/api/coach/cliente/vincular-hoja', authenticateToken, async (req, res)
       });
 
       console.log('Guardando en HojasClientes...');
-     const [existing] = await connection.execute(
-      'SELECT id_mapping FROM HojasClientes WHERE id_cliente = ?',
-      [safeIdCliente]
-    );
+      const [existing] = await connection.execute(
+        'SELECT id_mapping FROM HojasClientes WHERE id_cliente = ?',
+        [safeIdCliente]
+      );
 
       let result;
       if (existing.length > 0) {
         [result] = await connection.execute(
           `UPDATE HojasClientes 
-          SET id_hoja_google = ?, nombre_hoja = ?, activa = TRUE, ultima_sincronizacion = NOW(), id_coach = ?
-          WHERE id_cliente = ?`,
+           SET id_hoja_google = ?, nombre_hoja = ?, activa = TRUE, ultima_sincronizacion = NOW(), id_coach = ?
+           WHERE id_cliente = ?`,
           [safeSheetId, safeNombreHoja, safeIdCoach, safeIdCliente]
         );
         console.log('UPDATE HojasClientes - affectedRows:', result.affectedRows);
       } else {
         [result] = await connection.execute(
           `INSERT INTO HojasClientes (id_cliente, id_coach, id_hoja_google, nombre_hoja, activa, ultima_sincronizacion) 
-          VALUES (?, ?, ?, ?, TRUE, NOW())`,
+           VALUES (?, ?, ?, ?, TRUE, NOW())`,
           [safeIdCliente, safeIdCoach, safeSheetId, safeNombreHoja]
         );
         console.log('INSERT HojasClientes - affectedRows:', result.affectedRows, 'insertId:', result.insertId);
