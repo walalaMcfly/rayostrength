@@ -39,9 +39,9 @@ export default function Login() {
         return;         
       }
 
-      if (role === 'admin') router.replace('/(admin)');
-      else if (role === 'coach') router.replace('/(coach)');
-      else router.replace('/(drawer)/(tabs)');
+      if (role === 'admin') router.replace('/(admin)/index');
+      else if (role === 'coach') router.replace('/(coach)/index');
+      else router.replace('/(drawer)/(tabs)/rutinas');
     };
     check();
   }, []);
@@ -103,7 +103,7 @@ export default function Login() {
           router.replace('/(coach)');
         } else {
           console.log(' Redirigiendo a área de cliente');
-          router.replace('/(drawer)/(tabs)');
+          router.replace('/(drawer)/(tabs)/rutinas');
         }
       } else {
         Alert.alert("Error", data.message || "Credenciales incorrectas");
