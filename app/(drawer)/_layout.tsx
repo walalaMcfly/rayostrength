@@ -62,17 +62,6 @@ export default function DrawerLayout() {
         }}
       />
 
-      {/* TEMA */}
-      <Drawer.Screen
-        name="tema"
-        options={{
-          drawerLabel: 'Tema',
-          title: 'Configuración de Tema',
-          drawerIcon: ({ color, size }) => (
-            <Ionicons name="color-palette-outline" size={size} color={color} />
-          ),
-        }}
-      />
 
       {/* CERRAR SESIÓN  */}
       <Drawer.Screen

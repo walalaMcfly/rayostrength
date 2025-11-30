@@ -58,12 +58,6 @@ export default function CoachDashboard() {
           rutinasCompletadas: totalRutinas,
           clientesActivos: clientesActivos
         });
-
-        console.log('✅ Datos cargados:', {
-          clientes: clientes.length,
-          rutinas: totalRutinas,
-          activos: clientesActivos
-        });
       } else {
         throw new Error(data.message || 'Error al cargar datos');
       }
@@ -81,13 +75,20 @@ export default function CoachDashboard() {
     }
   };
 
-
   const handleNavigateToClients = () => {
-    console.log('📌 Navegando a gestión de clientes...');
     router.push('/(coach)/clients');
   };
 
-
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.removeItem('userToken');
+      await AsyncStorage.removeItem('userRole');
+      await AsyncStorage.removeItem('userId');
+      router.replace('/');
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+    }
+  };
 
   if (loading) {
     return (
@@ -106,7 +107,7 @@ export default function CoachDashboard() {
         
         {error && (
           <View style={styles.errorBox}>
-            <Text style={styles.errorText}>⚠️ {error}</Text>
+            <Text style={styles.errorText}>{error}</Text>
             <Text style={styles.errorSubtext}>Mostrando datos de ejemplo</Text>
           </View>
         )}
@@ -132,7 +133,6 @@ export default function CoachDashboard() {
           style={styles.mainCard}
           onPress={handleNavigateToClients}
         >
-          <Text style={styles.mainCardIcon}>👥</Text>
           <Text style={styles.mainCardTitle}>Gestión de Clientes</Text>
           <Text style={styles.mainCardText}>
             Gestionar {stats.totalClientes} clientes registrados
@@ -140,18 +140,24 @@ export default function CoachDashboard() {
         </TouchableOpacity>
       </View>
 
-    <TouchableOpacity 
-  style={styles.sesionesButton}
-  onPress={() => router.push('/(coach)/sesiones-coach')}
->
-  <View style={styles.sesionesButtonContent}>
-    <Text style={styles.sesionesButtonIcon}>📅</Text>
-    <View style={styles.sesionesButtonTextContainer}>
-      <Text style={styles.sesionesButtonTitle}>Mis Sesiones de meet</Text>
-    </View>
-    <Text style={styles.sesionesButtonArrow}>→</Text>
-  </View>
-</TouchableOpacity>
+      <TouchableOpacity 
+        style={styles.sesionesButton}
+        onPress={() => router.push('/(coach)/sesiones-coach')}
+      >
+        <View style={styles.sesionesButtonContent}>
+          <View style={styles.sesionesButtonTextContainer}>
+            <Text style={styles.sesionesButtonTitle}>Mis Sesiones de meet</Text>
+          </View>
+          <Text style={styles.sesionesButtonArrow}>→</Text>
+        </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={styles.logoutButton}
+        onPress={handleLogout}
+      >
+        <Text style={styles.logoutText}>Cerrar Sesión</Text>
+      </TouchableOpacity>
 
     </ScrollView>
   );
@@ -254,10 +260,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
-  mainCardIcon: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
   mainCardTitle: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -270,6 +272,39 @@ const styles = StyleSheet.create({
     color: colors.gray,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  sesionesButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: '#3B82F6',
+  },
+  sesionesButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sesionesButtonTextContainer: {
+    flex: 1,
+  },
+  sesionesButtonTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  sesionesButtonArrow: {
+    fontSize: 18,
+    color: '#3B82F6',
+    fontWeight: 'bold',
   },
   logoutButton: {
     backgroundColor: colors.error,
@@ -284,45 +319,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-
-  sesionesButton: {
-  backgroundColor: '#FFFFFF',
-  borderRadius: 12,
-  padding: 16,
-  marginBottom: 16,
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.1,
-  shadowRadius: 4,
-  elevation: 3,
-  borderLeftWidth: 4,
-  borderLeftColor: '#3B82F6',
-},
-sesionesButtonContent: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-},
-sesionesButtonIcon: {
-  fontSize: 24,
-  marginRight: 12,
-},
-sesionesButtonTextContainer: {
-  flex: 1,
-},
-sesionesButtonTitle: {
-  fontSize: 16,
-  fontWeight: 'bold',
-  color: '#1F2937',
-  marginBottom: 2,
-},
-sesionesButtonSubtitle: {
-  fontSize: 12,
-  color: '#6B7280',
-},
-sesionesButtonArrow: {
-  fontSize: 18,
-  color: '#3B82F6',
-  fontWeight: 'bold',
-},
 });

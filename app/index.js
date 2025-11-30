@@ -39,8 +39,8 @@ export default function Login() {
         return;         
       }
 
-      if (role === 'admin') router.replace('/(admin)/index');
-      else if (role === 'coach') router.replace('/(coach)/index');
+      if (role === 'admin') router.replace('/(admin)');
+      else if (role === 'coach') router.replace('/(coach)');
       else router.replace('/(drawer)/(tabs)/rutinas');
     };
     check();
