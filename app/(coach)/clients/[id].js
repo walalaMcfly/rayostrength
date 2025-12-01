@@ -34,11 +34,28 @@ export default function ClientDetail() {
   const [rutinaData, setRutinaData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [notasRecientes, setNotasRecientes] = useState([]);
   const [activeTab, setActiveTab] = useState('progreso');
 
   useEffect(() => {
     loadClienteData();
   }, [id]);
+
+
+  const loadNotasRecientes = async (token) => {
+  try {
+    const response = await fetch(`${API_URL}/coach/cliente/${id}/notas`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      setNotasRecientes(result.notas || []);
+    }
+  } catch (error) {
+    console.error('Error cargando notas:', error);
+  }
+};
 
   const loadClienteData = async () => {
     try {
@@ -46,6 +63,7 @@ export default function ClientDetail() {
       const token = await AsyncStorage.getItem('userToken');
       await loadDatosRealesCliente(token);
       await loadRutinaData(token);
+      await loadNotasRecientes(token);
     } catch (error) {
       console.error('Error cargando datos del cliente:', error);
       Alert.alert('Error', 'No se pudieron cargar los datos del cliente');
@@ -346,6 +364,22 @@ export default function ClientDetail() {
           <Text style={styles.botonMeetTexto}>📅 Agendar Google Meet</Text>
         </TouchableOpacity>
       </View>
+
+       <TouchableOpacity 
+        style={styles.botonNotas}
+        onPress={() => {
+          console.log('Navegando a notas con cliente:', cliente);
+          router.push({
+            pathname: '/(coach)/clients/notes',
+            params: { 
+              cliente: JSON.stringify(cliente),
+              idCliente: id 
+            }
+          });
+        }}
+      >
+      <Text style={styles.botonNotasTexto}>📝 Ver Notas</Text>
+    </TouchableOpacity>
 
       <View style={styles.tabsContainer}>
         <TouchableOpacity 
@@ -988,4 +1022,37 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 10,
   },
+  meetButtonContainer: {
+  backgroundColor: colors.white,
+  paddingHorizontal: 20,
+  paddingVertical: 16,
+  borderBottomWidth: 1,
+  borderBottomColor: '#E5E7EB',
+  flexDirection: 'row',
+  gap: 10,
+},
+botonMeet: {
+  flex: 1,
+  backgroundColor: colors.success,
+  padding: 15,
+  borderRadius: 10,
+  alignItems: 'center',
+},
+botonMeetTexto: {
+  color: colors.white,
+  fontSize: 16,
+  fontWeight: 'bold',
+},
+botonNotas: {
+  flex: 1,
+  backgroundColor: colors.primary,
+  padding: 15,
+  borderRadius: 10,
+  alignItems: 'center',
+},
+botonNotasTexto: {
+  color: colors.white,
+  fontSize: 16,
+  fontWeight: 'bold',
+},
 });

@@ -32,6 +32,7 @@ export default function RutinasScreen() {
   const [pesoTemp, setPesoTemp] = useState('');
   const [notaGeneral, setNotaGeneral] = useState('');
   const [rutinaCompletada, setRutinaCompletada] = useState(false);
+  const [idCoach, setIdCoach] = useState(null);
 
   useEffect(() => {
     const obtenerToken = async () => {
@@ -97,9 +98,14 @@ export default function RutinasScreen() {
           personalizada: result.personalizada || false,
           hojaVinculada: result.hojaVinculada || false,
           coach: result.coach || '',
+          id_coach: result.id_coach || null, 
           ejercicios: result.ejercicios || [],
           message: result.message || ''
         });
+
+        if (result.id_coach) {
+          setIdCoach(result.id_coach);
+        }
 
       } else {
         console.error('Error en respuesta del servidor:', result.message);
@@ -272,67 +278,85 @@ export default function RutinasScreen() {
     }
   };
 
-  const marcarTodosLosSets = () => {
-    const nuevosSets = { ...setsCompletados };
-    
-    rutina.ejercicios.forEach(ejercicio => {
-      if (!nuevosSets[ejercicio.id]) {
-        nuevosSets[ejercicio.id] = {};
+const registrarSesionCompletada = async () => {
+  try {
+    const ejerciciosCompletados = rutina.ejercicios.filter(ejercicio => {
+      const setsCompletadosCount = Object.values(setsCompletados[ejercicio.id] || {}).filter(Boolean).length;
+      return setsCompletadosCount === ejercicio.series;
+    }).length;
+
+    const volumenTotal = rutina.ejercicios.reduce((total, ejercicio) => {
+      const peso = parseFloat(realesData[ejercicio.id]?.pesoReal || '0') || 0;
+      const series = ejercicio.series || 0;
+      const reps = parseFloat(realesData[ejercicio.id]?.repsReales || '0') || 0;
+      return total + (peso * series * reps);
+    }, 0);
+    const response = await fetch(`${BASE_URL}/api/progreso/registrar-sesion`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${userToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        semana_rutina: 'Personalizada',
+        total_ejercicios: rutina.ejercicios.length,
+        ejercicios_completados: ejerciciosCompletados,
+        duracion_total_minutos: 60,
+        volumen_total: volumenTotal,
+        notas_usuario: notaGeneral || 'Rutina personalizada completada'
+      }),
+    });
+
+    if (response.ok) {
+
+      if (notaGeneral && notaGeneral.trim() !== '' && rutina.id_coach) {
+        try {
+          console.log('Enviando nota al coach:', rutina.id_coach);
+          
+          const notaResponse = await fetch(`${BASE_URL}/api/cliente/notas`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${userToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              id_coach: rutina.id_coach,
+              mensaje: notaGeneral
+            }),
+          });
+
+          const notaResult = await notaResponse.json();
+          
+          if (notaResponse.ok) {
+            console.log(' Nota enviada al coach correctamente');
+          } else {
+            console.log(' Error enviando nota al coach:', notaResult.message);
+          }
+        } catch (notaError) {
+          console.error('Error enviando nota:', notaError);
+        }
+      }
+      setRutinaCompletada(true);
+      
+      let mensajeExito = "🎉 Rutina Completada\nTu progreso ha sido guardado correctamente";
+      if (notaGeneral && rutina.id_coach) {
+        mensajeExito += "\n\nTu nota ha sido enviada a tu coach";
+      } else if (notaGeneral && !rutina.id_coach) {
+        mensajeExito += "\n\nNota: No se pudo enviar tu nota (no tienes coach asignado)";
       }
       
-      for (let setNum = 1; setNum <= ejercicio.series; setNum++) {
-        nuevosSets[ejercicio.id][setNum] = true;
-      }
-    });
-    
-    setSetsCompletados(nuevosSets);
-    setShowModalCompletar(true);
-  };
-
-  const registrarSesionCompletada = async () => {
-    try {
-      const ejerciciosCompletados = rutina.ejercicios.filter(ejercicio => {
-        const setsCompletadosCount = Object.values(setsCompletados[ejercicio.id] || {}).filter(Boolean).length;
-        return setsCompletadosCount === ejercicio.series;
-      }).length;
-
-      const volumenTotal = rutina.ejercicios.reduce((total, ejercicio) => {
-        const peso = parseFloat(realesData[ejercicio.id]?.pesoReal || '0') || 0;
-        const series = ejercicio.series || 0;
-        const reps = parseFloat(realesData[ejercicio.id]?.repsReales || '0') || 0;
-        return total + (peso * series * reps);
-      }, 0);
-
-      const response = await fetch(`${BASE_URL}/api/progreso/registrar-sesion`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${userToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          semana_rutina: 'Personalizada',
-          total_ejercicios: rutina.ejercicios.length,
-          ejercicios_completados: ejerciciosCompletados,
-          duracion_total_minutos: 60,
-          volumen_total: volumenTotal,
-          notas_usuario: notaGeneral || 'Rutina personalizada completada'
-        }),
-      });
-
-      if (response.ok) {
-        setRutinaCompletada(true);
-        Alert.alert("🎉 Rutina Completada", "Tu progreso ha sido guardado correctamente y tu coach ha sido notificado");
-        setShowModalCompletar(false);
-        setNotaGeneral('');
-      } else {
-        throw new Error('Error al registrar sesion');
-      }
-
-    } catch (error) {
-      console.error('Error registrando sesion completada:', error);
-      Alert.alert("❌ Error", "No se pudo guardar la sesion completada");
+      Alert.alert(" Éxito", mensajeExito);
+      setShowModalCompletar(false);
+      setNotaGeneral('');
+    } else {
+      throw new Error('Error al registrar sesión');
     }
-  };
+
+  } catch (error) {
+    console.error('Error registrando sesion completada:', error);
+    Alert.alert(" Error", "No se pudo guardar la sesión completada: " + error.message);
+  }
+};
 
   const renderItem = ({ item, index }) => {
     if (rutinaCompletada) return null;
@@ -501,14 +525,15 @@ export default function RutinasScreen() {
         }
       />
 
+      {/* BOTÓN CORREGIDO - SIN DUPLICADOS */}
       {rutina?.ejercicios && rutina.ejercicios.length > 0 && (
-  <TouchableOpacity 
-    style={styles.botonCompletarRutina}
-    onPress={() => setShowModalCompletar(true)}
-  >
-    <Text style={styles.textoBotonCompletarRutina}>✅ Completar Rutina</Text>
-  </TouchableOpacity>
-)}
+        <TouchableOpacity 
+          style={styles.botonCompletarRutina}
+          onPress={() => setShowModalCompletar(true)}
+        >
+          <Text style={styles.textoBotonCompletarRutina}>✅ Completar Rutina</Text>
+        </TouchableOpacity>
+      )}
 
       <Modal
         visible={!!ejercicioEditando}
@@ -810,32 +835,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  botonesContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    marginBottom: 24,
-    gap: 10,
-  },
-  botonCompletarRapido: {
-    flex: 1,
-    backgroundColor: colors.secondary,
+  botonCompletarRutina: {
+    backgroundColor: colors.active,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 24,
   },
-  botonCompletarRutina: {
-  backgroundColor: colors.active,
-  padding: 16,
-  borderRadius: 12,
-  alignItems: 'center',
-  marginHorizontal: 16,
-  marginBottom: 24,
-},
-textoBotonCompletarRutina: {
-  color: colors.card,
-  fontSize: 16,
-  fontWeight: 'bold',
-},
   textoBotonCompletarRutina: {
     color: colors.card,
     fontSize: 16,

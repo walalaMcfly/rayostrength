@@ -1440,7 +1440,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
           }
           
           const [hojas] = await pool.execute(
-            `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
+            `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido, c.id_coach 
              FROM HojasClientes hc
              JOIN Coach c ON hc.id_coach = c.id_coach
              WHERE hc.id_cliente = ? AND hc.activa = TRUE`,
@@ -1452,6 +1452,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
             personalizada: true,
             hojaVinculada: hojas.length > 0,
             coach: hojas.length > 0 ? `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}` : 'Coach',
+            id_coach: hojas.length > 0 ? hojas[0].id_coach : null, 
             ultimaSincronizacion: cache[0].fecha_actualizacion,
             ejercicios: rutinaData.ejercicios,
             metadata: rutinaData.metadata,
@@ -1463,7 +1464,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
       }
 
       const [hojas] = await pool.execute(
-        `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido 
+        `SELECT hc.*, c.nombre as coach_nombre, c.apellido as coach_apellido, c.id_coach 
          FROM HojasClientes hc
          JOIN Coach c ON hc.id_coach = c.id_coach
          WHERE hc.id_cliente = ? AND hc.activa = TRUE`,
@@ -1491,6 +1492,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
             success: true,
             personalizada: true,
             coach: `${hojas[0].coach_nombre} ${hojas[0].coach_apellido}`,
+            id_coach: hojas[0].id_coach, 
             hojaVinculada: true,
             ultimaSincronizacion: new Date().toISOString(),
             ejercicios: rutinaProcesada.ejercicios,
@@ -1503,6 +1505,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
             success: true,
             personalizada: false,
             hojaVinculada: true,
+            id_coach: hojas[0].id_coach, // ← AGREGAR ESTA LÍNEA TAMBIÉN AQUÍ
             message: 'Error accediendo a la hoja de Google Sheets. Contacta a tu coach.'
           });
         }
@@ -1512,6 +1515,7 @@ app.get('/api/rutinas-personalizadas/cliente/:idCliente', authenticateToken, asy
         success: true,
         personalizada: false,
         hojaVinculada: false,
+        id_coach: null, // ← AGREGAR ESTA LÍNEA
         ejercicios: [],
         message: 'Aún no tienes una rutina personalizada asignada. Contacta a tu coach.'
       });
@@ -2460,7 +2464,7 @@ app.get('/api/email-status', (req, res) => {
 
 
 
-// Endpoint para obtener notas del cliente
+// Endpoint para obtener notas del cliente PARA el coach
 app.get('/api/coach/cliente/:idCliente/notas', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'coach') {
@@ -2474,11 +2478,12 @@ app.get('/api/coach/cliente/:idCliente/notas', authenticateToken, async (req, re
     const idCoach = req.user.coachId;
 
     const [notas] = await pool.execute(
-      `SELECT nc.*, c.nombre as coach_nombre, c.apellido as coach_apellido,
-              u.nombre as cliente_nombre, u.apellido as cliente_apellido
-       FROM NotasCoach nc
-       JOIN Coach c ON nc.id_coach = c.id_coach
+      `SELECT nc.*, 
+              u.nombre as cliente_nombre, u.apellido as cliente_apellido,
+              c.nombre as coach_nombre, c.apellido as coach_apellido
+       FROM NotasCliente nc
        JOIN Usuario u ON nc.id_cliente = u.id_usuario
+       JOIN Coach c ON nc.id_coach = c.id_coach
        WHERE nc.id_cliente = ? AND nc.id_coach = ?
        ORDER BY nc.fecha_creacion DESC`,
       [idCliente, idCoach]
@@ -2498,35 +2503,35 @@ app.get('/api/coach/cliente/:idCliente/notas', authenticateToken, async (req, re
   }
 });
 
-// Endpoint para crear nueva nota
-app.post('/api/coach/notas', authenticateToken, async (req, res) => {
+// Endpoint para que el CLIENTE envíe notas al COACH
+app.post('/api/cliente/notas', authenticateToken, verificarCuentaActivada, async (req, res) => {
   try {
-    if (req.user.role !== 'coach') {
+    if (req.user.role !== 'user') {
       return res.status(403).json({
         success: false,
-        message: 'Acceso denegado. Solo para coaches.'
+        message: 'Acceso denegado. Solo para usuarios.'
       });
     }
 
-    const { id_cliente, mensaje } = req.body;
-    const id_coach = req.user.coachId;
+    const { id_coach, mensaje } = req.body;
+    const id_cliente = req.user.userId;
 
-    if (!id_cliente || !mensaje) {
+    if (!id_coach || !mensaje) {
       return res.status(400).json({
         success: false,
-        message: 'ID del cliente y mensaje son requeridos'
+        message: 'ID del coach y mensaje son requeridos'
       });
     }
 
     const [result] = await pool.execute(
-      `INSERT INTO NotasCoach (id_coach, id_cliente, mensaje) 
+      `INSERT INTO NotasCliente (id_cliente, id_coach, mensaje) 
        VALUES (?, ?, ?)`,
-      [id_coach, id_cliente, mensaje]
+      [id_cliente, id_coach, mensaje]
     );
 
     res.json({
       success: true,
-      message: 'Nota creada correctamente',
+      message: 'Nota enviada al coach correctamente',
       id_nota: result.insertId
     });
 
@@ -2539,7 +2544,7 @@ app.post('/api/coach/notas', authenticateToken, async (req, res) => {
   }
 });
 
-// Endpoint para marcar nota como leída
+// Endpoint para que el COACH marque nota como leída
 app.put('/api/coach/notas/:idNota/leido', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'coach') {
@@ -2550,9 +2555,21 @@ app.put('/api/coach/notas/:idNota/leido', authenticateToken, async (req, res) =>
     }
 
     const { idNota } = req.params;
+    const idCoach = req.user.coachId;
+    const [notas] = await pool.execute(
+      'SELECT id_nota FROM NotasCliente WHERE id_nota = ? AND id_coach = ?',
+      [idNota, idCoach]
+    );
+
+    if (notas.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Nota no encontrada'
+      });
+    }
 
     await pool.execute(
-      'UPDATE NotasCoach SET leido = TRUE WHERE id_nota = ?',
+      'UPDATE NotasCliente SET leido = TRUE WHERE id_nota = ?',
       [idNota]
     );
 

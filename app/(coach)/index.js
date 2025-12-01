@@ -141,19 +141,6 @@ export default function CoachDashboard() {
       </View>
 
       <TouchableOpacity 
-  style={styles.notesButton}
-  onPress={() => router.push('/(coach)/notes')}
->
-  <View style={styles.notesButtonContent}>
-    <View style={styles.notesButtonTextContainer}>
-      <Text style={styles.notesButtonTitle}>Mis Notas</Text>
-      <Text style={styles.notesButtonSubtitle}>Gestionar notas de clientes</Text>
-    </View>
-    <Text style={styles.notesButtonArrow}>→</Text>
-  </View>
-</TouchableOpacity>
-
-      <TouchableOpacity 
         style={styles.sesionesButton}
         onPress={() => router.push('/(coach)/sesiones-coach')}
       >
@@ -332,43 +319,5 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-
-  notesButton: {
-  backgroundColor: '#FFFFFF',
-  borderRadius: 12,
-  padding: 16,
-  marginHorizontal: 20,
-  marginBottom: 16,
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.1,
-  shadowRadius: 4,
-  elevation: 3,
-  borderLeftWidth: 4,
-  borderLeftColor: '#10B981',
-},
-notesButtonContent: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-},
-notesButtonTextContainer: {
-  flex: 1,
-},
-notesButtonTitle: {
-  fontSize: 16,
-  fontWeight: 'bold',
-  color: '#1F2937',
-  marginBottom: 2,
-},
-notesButtonSubtitle: {
-  fontSize: 12,
-  color: '#6B7280',
-},
-notesButtonArrow: {
-  fontSize: 18,
-  color: '#10B981',
-  fontWeight: 'bold',
-},
 
 });
